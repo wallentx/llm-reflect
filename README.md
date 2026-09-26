@@ -18,13 +18,24 @@ The runtime uses the Python standard library. On Termux, install Python with
 git clone --branch dev https://github.com/wallentx/llm-reflect.git
 cd llm-reflect
 sh ./install.sh
-~/.local/bin/reflect init
 ```
 
 `install.sh` installs the `reflect` command under `~/.local/bin` and a standalone
-runtime under `~/.local/share/reflect`. `reflect init` shows detected providers and
-asks which ones to configure. Use `reflect` directly if `~/.local/bin` is on PATH.
-Restart the selected agents and review their hook trust prompts after setup.
+runtime under `~/.local/share/reflect`, then opens the provider TUI when run in a
+terminal. Use Up/Down to move, Space to toggle checkboxes, and Enter to review.
+Installed providers start checked. Checked providers are installed or updated;
+unchecking an installed provider removes that integration after confirmation.
+Esc or q cancels. Use `reflect` directly if `~/.local/bin` is on PATH. Restart
+selected agents and review hook trust prompts after setup.
+
+The picker uses color to highlight selections and planned removals. Set
+`NO_COLOR=1` to use plain text, for example `NO_COLOR=1 reflect init`.
+
+An orange `⁕` marks an installed upstream `claude-reflect` plugin, with a legend
+at the bottom. It starts checked and stays unchanged until toggled. Uncheck it
+to uninstall upstream; recheck it to replace upstream with LLM Reflect. Review
+and confirm the changes before they run. Upstream plugin data and queues are
+retained; queues are not imported into LLM Reflect.
 
 For scripted installation, select providers explicitly:
 
@@ -41,7 +52,20 @@ providers get user-level skills and their supported hook/plugin adapter.
 `--method local` installs directly, `--prefix DIR` changes the runtime installation
 prefix, and `reflect init --list` shows integration status. Existing settings and
 unrelated hooks are preserved; locally edited managed files require review before
-replacement. Selection is additive, so leaving out a provider does not remove it.
+replacement. Explicit `--provider` commands are additive; the checkbox picker
+reconciles the checked set, including removal of unchecked installed providers.
+
+Open the TUI again, or use its dedicated uninstall picker:
+
+```sh
+~/.local/bin/reflect init
+~/.local/bin/reflect uninstall
+```
+
+The uninstall picker lists installed integrations and removes only checked ones
+after confirmation. Learning queues and unrelated settings are retained. Use
+`sh ./install.sh --no-configure` to install only the command; scripted provider
+setup and `init --remove --provider NAME` remain available.
 
 On Windows, run `python tools/install.py` and use the installed `reflect.cmd`.
 See [the provider guide](PROVIDERS.md) for paths, upgrades, removal, and imports.

@@ -223,12 +223,16 @@ def local_plan(name, previous, remove=False):
 
 
 def add_init_parser(commands):
-    parser = commands.add_parser("init", help="Choose providers or register explicitly, like panoptes init")
-    parser.add_argument("--provider", dest="selected", action="append", choices=sorted(providers.PROVIDERS))
-    parser.add_argument("--method", choices=("auto", "local", "marketplace"), default="auto")
-    parser.add_argument("--dry-run", action="store_true", help="Print changes without writing or running provider CLIs")
-    parser.add_argument("--remove", action="store_true", help="Remove only the named managed integrations; retain queues")
-    parser.add_argument("--list", action="store_true", help="Show detection, installation and capabilities")
+    for action, description in (("init", "Open the provider install/update/remove picker"),
+                                ("uninstall", "Choose provider integrations to remove; retain queues")):
+        parser = commands.add_parser(action, help=description)
+        parser.add_argument("--provider", dest="selected", action="append", choices=sorted(providers.PROVIDERS))
+        parser.add_argument("--method", choices=("auto", "local", "marketplace"), default="auto")
+        parser.add_argument("--dry-run", action="store_true", help="Print changes without writing or running provider CLIs")
+        parser.add_argument("--list", action="store_true", help="Show detection, installation and capabilities")
+        parser.set_defaults(remove=action == "uninstall")
+        if action == "init":
+            parser.add_argument("--remove", action="store_true", help="Open the uninstall picker or remove named integrations")
 
 
 def source_root():
@@ -264,7 +268,7 @@ def marketplace_registered(name):
     return any(isinstance(row, dict) and row.get("name") == expected for row in rows)
 
 
-def installed_marketplace(name):
+def installed_marketplace(name, include_upstream=True):
     if name == "codex":
         path = providers.provider_home(name) / "config.toml"
         if path.exists():
@@ -272,20 +276,122 @@ def installed_marketplace(name):
             return bool(re.search(r'\[plugins\.[^\n]*codex-reflect@', path.read_text(encoding="utf-8")))
     if name == "claude":
         data = read_json(providers.provider_home(name) / "plugins/installed_plugins.json")
-        return any(key.split("@")[0] in ("reflect", "claude-reflect") for key in data.get("plugins", {}))
+        names = ("reflect", "claude-reflect") if include_upstream else ("reflect",)
+        return any(key.split("@")[0] in names for key in data.get("plugins", {}))
     return False
 
 
-def legacy_claude_installed():
+def legacy_claude_installs():
+    """Return upstream registrations for the user and the current project."""
     data = read_json(providers.provider_home("claude") / "plugins/installed_plugins.json")
-    return any(key.split("@")[0] == "claude-reflect" for key in data.get("plugins", {}))
+    plugins = data.get("plugins", {})
+    if not isinstance(plugins, dict):
+        raise ValueError("Unrecognized Claude plugin registry")
+    installed = []
+    for plugin, entries in sorted(plugins.items()):
+        if plugin.split("@")[0] != "claude-reflect":
+            continue
+        if not isinstance(entries, list):
+            raise ValueError("Unrecognized upstream Claude plugin registrations")
+        for entry in entries or [{}]:
+            if not isinstance(entry, dict):
+                raise ValueError("Unrecognized upstream Claude plugin registration")
+            scope = entry.get("scope", "user")
+            if scope not in ("user", "project", "local"):
+                raise ValueError("Unsupported upstream Claude plugin scope: " + str(scope))
+            if scope != "user":
+                project = entry.get("projectPath")
+                if not isinstance(project, str) or not Path(project).is_absolute():
+                    raise ValueError("Upstream Claude project registration needs an absolute projectPath")
+                if Path(project).resolve() != Path.cwd().resolve():
+                    continue
+            installed.append(dict(entry, plugin=plugin, scope=scope))
+    return installed
+
+
+def upstream_uninstall_commands(entries):
+    # Scope and plugin ID come from the inspected native registry, never guesses.
+    registrations = dict.fromkeys((entry["plugin"], entry["scope"]) for entry in entries)
+    return [["claude", "plugin", "uninstall", plugin, "--scope", scope, "--keep-data"]
+            for plugin, scope in registrations]
+
+
+def installation_state():
+    """Include native marketplace installs made before the standalone installer."""
+    registry = read_json(registry_path())
+    registered = registry.get("providers", {})
+    if not isinstance(registered, dict) or any(name not in providers.PROVIDERS for name in registered):
+        raise ValueError("Unrecognized provider installation registry")
+    installed = dict(registered)
+    if "codex" not in installed and installed_marketplace("codex"):
+        installed["codex"] = {"method": "marketplace"}
+    if "claude" not in installed:
+        native = read_json(providers.provider_home("claude") / "plugins/installed_plugins.json")
+        if "reflect@reflect-marketplace" in native.get("plugins", {}):
+            installed["claude"] = {"method": "marketplace"}
+    upstream = legacy_claude_installs()
+    if upstream:
+        installed["claude"] = dict(installed.get("claude", {"method": "upstream"}), upstream=upstream)
+    return registry, installed
+
+
+def provider_rows(installed, removing=False):
+    rows = []
+    for name, spec in providers.PROVIDERS.items():
+        if removing and name not in installed:
+            continue
+        method = installed.get(name, {}).get("method")
+        upstream = bool(installed.get(name, {}).get("upstream"))
+        detected = providers.provider_home(name).exists()
+        status = "installed (" + method + ")" if method else "detected" if detected else "not detected"
+        if upstream:
+            status = "upstream claude-reflect" + (" + LLM Reflect" if method != "upstream" else "")
+        capture = "manual capture" if name == "antigravity" else "automatic capture"
+        history = "native history" if spec["history"] != "import" else "history imports"
+        rows.append({"id": name, "label": spec["name"], "status": status, "upstream": upstream,
+                     "detail": name + ": " + capture + "; " + history + "; skills: " + str(providers.skill_home(name))})
+    return rows
 
 
 def initialize(args):
+    _, installed = installation_state()
+    if args.list:
+        print("PROVIDER     DETECTED  INSTALLED    CAPTURE  HISTORY  MARKETPLACE")
+        for name, spec in providers.PROVIDERS.items():
+            method = installed.get(name, {}).get("method", "-")
+            if installed.get(name, {}).get("upstream") and method != "upstream":
+                method += "+upstream"
+            print("{:<12} {:<9} {:<12} {:<8} {:<8} {}".format(name,
+                "yes" if providers.provider_home(name).exists() else "no", method,
+                "manual" if name == "antigravity" else "hook", spec["history"],
+                "yes" if spec["marketplace"] else "no"))
+        return 0
+    if args.selected:
+        actions = [(name, args.remove) for name in dict.fromkeys(args.selected)]
+    else:
+        from tui import choose_providers
+        rows = provider_rows(installed, args.remove)
+        if not rows:
+            print("No Reflect provider integrations are installed.")
+            return 0
+        try:
+            chosen = choose_providers(rows, installed, removing=args.remove, dry_run=args.dry_run)
+        except KeyboardInterrupt:
+            chosen = None
+        if chosen is None:
+            print("Cancelled; no provider changes made.")
+            return 0
+        add, remove = chosen
+        actions = [(name, False) for name in add] + [(name, True) for name in remove]
+    if not actions:
+        print("No provider changes selected.")
+        return 0
+    if any(name not in providers.PROVIDERS for name, _ in actions):
+        raise ValueError("Unknown provider selection")
     # Serialize init/remove across providers sharing the registry. Dry runs and
-    # listing must remain completely read-only, including no lock-file creation.
-    if args.dry_run or args.list:
-        return initialize_locked(args)
+    # cancelled pickers must remain completely read-only, including no lock files.
+    if args.dry_run:
+        return initialize_locked(args, actions, installed)
     lock = registry_path().with_suffix(".lock")
     if any(p.is_symlink() for p in (lock, *lock.parents)):
         raise ValueError("Refusing symlink destination: " + str(lock))
@@ -296,68 +402,62 @@ def initialize(args):
         raise RuntimeError("Another installer is running (or left a stale lock): " + str(lock))
     try:
         os.close(fd)
-        return initialize_locked(args)
+        return initialize_locked(args, actions, installed)
     finally:
         lock.unlink()
 
 
-def initialize_locked(args):
-    registry = read_json(registry_path())
+def initialize_locked(args, actions, expected):
+    registry, current = installation_state()
+    if current != expected:
+        raise RuntimeError("Provider installations changed while selecting; rerun the picker")
     installed = registry.setdefault("providers", {})
-    if args.list or not args.selected:
-        print("PROVIDER     DETECTED  INSTALLED    CAPTURE  HISTORY  MARKETPLACE")
-        for name, spec in providers.PROVIDERS.items():
-            method = installed.get(name, {}).get("method", "-")
-            print("{:<12} {:<9} {:<12} {:<8} {:<8} {}".format(name,
-                "yes" if providers.provider_home(name).exists() else "no", method,
-                "manual" if name == "antigravity" else "hook", spec["history"],
-                "yes" if spec["marketplace"] else "no"))
-    if args.list:
-        return 0
-    if not args.selected:
-        if not sys.stdin.isatty():
-            raise ValueError("Provider selection needs a terminal; pass --provider NAME")
-        # Additive selection: leaving out a provider never silently removes it.
-        raw = input("Providers (comma-separated IDs; empty cancels): ").strip()
-        if not raw:
-            return 0
-        args.selected = [value.strip() for value in raw.split(",")]
-    names = list(dict.fromkeys(args.selected))
-    if any(name not in providers.PROVIDERS for name in names):
-        raise ValueError("Unknown provider selection")
     writes, commands = {}, []
-    for name in names:
-        previous = installed.get(name, {})
+    for name, remove in actions:
+        previous = current.get(name, {})
+        upstream = previous.get("upstream", [])
+        previous_method = previous.get("method")
+        if previous_method == "upstream":
+            previous_method = None
         method = args.method
         if method == "auto":
-            method = previous.get("method") or ("marketplace" if providers.PROVIDERS[name]["marketplace"] else "local")
-        if previous and method != previous["method"]:
+            method = previous_method or ("marketplace" if providers.PROVIDERS[name]["marketplace"] else "local")
+        if previous_method and method != previous_method:
+            if previous_method == "marketplace" and method == "local":
+                raise ValueError("Marketplace Reflect is already registered for " + name + "; uninstall it before choosing local setup")
             raise ValueError("Remove the existing integration before changing installation method for " + name)
-        if args.remove and not previous:
+        if remove and not previous:
             raise ValueError("No managed installation to remove for " + name)
-        if method == "local":
-            if not args.remove and installed_marketplace(name):
+        if remove and upstream and not previous_method:
+            # An upstream-only row has no LLM Reflect installation to remove.
+            entry = {}
+        elif method == "local":
+            if not remove and installed_marketplace(name, include_upstream=not bool(upstream)):
                 raise ValueError("Marketplace Reflect is already registered for " + name + "; use --method marketplace")
-            plan, entry = local_plan(name, previous, args.remove)
+            plan, entry = local_plan(name, previous, remove)
             writes.update(plan)
         else:
-            if name == "claude" and not args.remove and legacy_claude_installed():
-                raise ValueError("Legacy claude-reflect is installed. Remove it with Claude's plugin manager before installing reflect, to avoid duplicate capture. Its queue is not migrated.")
-            if not args.remove and not (source_root() / ".agents/plugins/marketplace.json").is_file():
+            if not remove and not (source_root() / ".agents/plugins/marketplace.json").is_file():
                 raise ValueError("Marketplace installation needs the original Reflect checkout")
-            planned = marketplace_commands(name, args.remove, bool(previous))
-            if not args.dry_run and not shutil.which(planned[0][0]):
-                raise ValueError("Provider executable not found: " + planned[0][0])
+            planned = marketplace_commands(name, remove, bool(previous_method))
             commands.extend((name, command) for command in planned)
             entry = {"method": method}
-        if args.remove:
+        if upstream:
+            # A failed native replacement install leaves upstream registered.
+            commands.extend((name, command) for command in upstream_uninstall_commands(upstream))
+            print("claude: upstream data is retained; its queues are not migrated to LLM Reflect.")
+        if remove:
             installed.pop(name, None)
         else:
             installed[name] = entry
-        if name == "antigravity" and not args.remove:
+        if name == "antigravity" and not remove:
             print("antigravity: skills + manual capture; no automatic hook adapter.")
-        if providers.PROVIDERS[name]["history"] == "import" and not args.remove:
+        if providers.PROVIDERS[name]["history"] == "import" and not remove:
             print(name + ": historical scan requires --history FILE; queue review works directly.")
+    if not args.dry_run:
+        for executable in dict.fromkeys(command[0] for _, command in commands):
+            if not shutil.which(executable):
+                raise ValueError("Provider executable not found: " + executable)
     new_registry = encoded(registry)
     if not registry_path().exists() or registry_path().read_bytes() != new_registry:
         writes[registry_path()] = new_registry

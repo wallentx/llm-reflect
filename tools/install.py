@@ -4,6 +4,7 @@ import argparse
 import json
 import os
 from pathlib import Path
+import subprocess
 import sys
 sys.dont_write_bytecode = True
 
@@ -16,6 +17,7 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--prefix", type=Path, default=Path.home() / ".local")
     parser.add_argument("--dry-run", action="store_true")
+    parser.add_argument("--no-configure", action="store_true", help="Install the command without opening the provider TUI")
     args = parser.parse_args()
     from build_codex import render
     from build_providers import render as render_providers
@@ -55,6 +57,8 @@ def main():
     if not args.dry_run:
         launcher.chmod(0o755)
     print(("Would install: " if args.dry_run else "Installed: ") + str(launcher))
+    if not args.dry_run and not args.no_configure and sys.stdin.isatty() and sys.stderr.isatty():
+        return subprocess.run([sys.executable, str(script), "init"], check=False).returncode
     print("Next: " + shell_command([launcher, "init"]))
     return 0
 

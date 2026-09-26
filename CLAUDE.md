@@ -58,7 +58,9 @@ operator's history, configuration, queues, and credentials. Do not clear a live
 queue to test capture or removal. Native IDE hook execution requires separate
 provider/runtime validation; fixture success alone does not establish it.
 
-The standalone installer must preserve unrelated settings and hooks, refuse
+The provider TUI must keep confirmation and cancellation read-only until applied,
+restore terminal state on every exit path, and preserve explicit-provider CLI
+usage for scripts. The standalone installer must preserve unrelated settings and hooks, refuse
 unmanaged or edited files, and keep `--dry-run` read-only. Preserve backups and
 ownership tracking when changing registration/removal behavior.
 

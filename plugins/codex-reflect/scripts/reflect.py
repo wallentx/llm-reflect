@@ -94,11 +94,11 @@ def main():
             sub.add_argument("--semantic", action="store_true", help="Invoke ephemeral Codex analysis (may incur model usage)")
     args = parser.parse_args()
     providers.select(args.provider)
-    if args.action == "init":
+    if args.action in ("init", "uninstall"):
         try:
             return initialize(args)
         except (ValueError, OSError, RuntimeError) as exc:
-            print("[reflect init] " + str(exc), file=sys.stderr)
+            print("[reflect " + args.action + "] " + str(exc), file=sys.stderr)
             return 1
     if args.action == "capture":
         item = capture(sys.stdin.read(), args.project, args.session_id)

@@ -12,10 +12,31 @@ sh ./install.sh
 ~/.local/bin/reflect init
 ```
 
-The first command copies a standalone runtime to `~/.local/share/reflect` and
-creates `~/.local/bin/reflect`. It does not change agent configuration. The second
-shows provider detection and installation status, then accepts comma-separated
-provider IDs. Selection is additive; omitting a provider never removes it.
+`install.sh` copies the runtime to `~/.local/share/reflect`, creates
+`~/.local/bin/reflect`, and opens the provider TUI when stdin/stderr are terminals.
+`reflect init` opens it again. Installed providers start checked. Use Up/Down or
+j/k to move, Space to toggle, and Enter to review changes. Checked providers are
+installed/updated; unchecking an installed provider schedules its removal.
+The review screen defaults to Cancel; choose Apply or press y to confirm.
+Esc/q cancels without provider changes. Provider changes are written only after
+confirmation.
+
+`reflect uninstall` (also `reflect init --remove`) opens a removal picker with
+installed integrations initially unchecked. Only checked integrations are removed
+after confirmation. Native Codex/Claude marketplace installs made outside the
+standalone installer are detected too. Upstream `claude-reflect` installs have an
+orange `⁕` and a footer legend. In the setup picker, an untouched upstream row
+keeps upstream, unchecking removes it, and rechecking replaces it with LLM Reflect.
+In the uninstall picker, check the row to remove it. User-scope registrations and
+project/local registrations for the current directory are detected; other
+projects are left alone. The runtime, plugin data, and learning queues remain
+installed; upstream queues are not imported into LLM Reflect.
+
+Explicit `--provider` commands are additive and do not open the picker. Unattended
+setup requires those flags. Use `install.sh --no-configure` for runtime-only setup;
+noninteractive bootstrap runs do not open the TUI.
+An explicit `init --provider claude` replaces detected upstream registrations;
+`uninstall --provider claude` removes them. Use `--dry-run` to preview either.
 
 Use `reflect` directly if `~/.local/bin` is already on PATH. `--prefix DIR` changes
 the installation prefix. On Windows use `python tools/install.py` and invoke the
@@ -31,9 +52,10 @@ resulting `reflect.cmd`. On Termux use `pkg install python` if Python is absent.
 # Explicitly choose direct skills/hooks rather than marketplace packaging.
 ~/.local/bin/reflect init --provider claude --method local
 
-# Inspect status or remove one managed integration. Queues are retained.
+# Open the removal picker, or inspect status / remove a named integration.
+~/.local/bin/reflect uninstall
 ~/.local/bin/reflect init --list
-~/.local/bin/reflect init --provider cursor --remove
+~/.local/bin/reflect uninstall --provider cursor
 ```
 
 `--method auto` (default) uses marketplaces for Codex/Claude and local integration
@@ -106,8 +128,9 @@ The fork's Claude marketplace has a distinct name from the original upstream
 `claude-reflect-marketplace`. The original plugin remains available as
 `claude-reflect@reflect-marketplace`; it retains upstream behavior and storage.
 Use only one Reflect integration per provider to avoid duplicate captures.
-Local setup refuses detected Codex/Claude marketplace installations. To change
+Local setup refuses existing LLM Reflect marketplace installations. To change
 methods, remove the existing integration first, then install the desired one.
+Upstream Claude Reflect can be replaced with either installation method.
 
 Marketplace installation delegates to the provider CLI and retains the checkout
 as the local marketplace source. Keep that checkout available for upgrades.
@@ -158,7 +181,8 @@ and integrations. The installer preserves unrelated JSON values and hook entries
 deduplicates its own registrations, and refuses unmanaged or edited skill files,
 modified managed hooks, malformed configuration, and symlink destinations.
 Backups and the ownership registry live under `$XDG_STATE_HOME/reflect`.
-`--remove` only removes recorded, unchanged files/hooks; queues and unrelated
+`uninstall` / `--remove` only remove recorded, unchanged local files/hooks or the
+selected native marketplace plugin; queues and unrelated
 provider installations remain. Interrupted setup may leave `installation.lock`;
 confirm no installer is running before removing a stale lock manually.
 
@@ -173,7 +197,9 @@ python3 tools/build_codex.py --check
 python3 tools/build_providers.py --check
 ```
 
-Tests use synthetic histories and isolated homes. Native agent UI behavior still
+Tests use synthetic histories and isolated homes, plus POSIX pseudo-terminals to
+verify arrow/Space input, confirmation, cancellation, and restoration of terminal
+settings. Native agent UI behavior still
 needs testing in each installed provider/version; passing fixtures is not proof
 of a live IDE hook execution.
 
