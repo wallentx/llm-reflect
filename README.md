@@ -1,7 +1,6 @@
 # llm-reflect
 
 Turn corrections to your coding agent into better instructions and reusable skills.
-Changes need your approval.
 
 Supports Codex, Claude Code, Cursor, Gemini CLI, OpenCode, Copilot CLI, and
 Antigravity CLI. See [provider support](PROVIDERS.md#capabilities) for capabilities.
@@ -22,12 +21,17 @@ On Windows, run `python tools/install.py`. Restart your agent after installation
 
 In Codex, start with `$reflect`. In other agents, invoke the installed `reflect` skill.
 
-| Skill | Purpose |
-|---|---|
-| `reflect` | Review corrections and propose instruction updates |
-| `reflect-skills` | Turn recurring workflows into reusable skills |
-| `view-queue` | Show pending corrections |
-| `skip-reflect` | Discard pending corrections |
+| Skill | Purpose | Options |
+|---|---|---|
+| `reflect` | Review corrections and propose instruction updates | `--dry-run`, `--scan-history`, `--days N`, `--history FILE`, `--targets`, `--review`, `--dedupe`, `--organize`, `--include-tool-errors`, `--model MODEL` (Codex) |
+| `reflect-skills` | Turn recurring workflows into reusable skills | `--days N`, `--project PATH`, `--all-projects`, `--history FILE`, `--dry-run` |
+| `view-queue` | Show pending corrections | - |
+| `skip-reflect` | Discard pending corrections | - |
+
+```text
+$reflect --scan-history --days 30
+$reflect-skills --all-projects --days 14 --dry-run
+```
 
 ## Documentation
 
