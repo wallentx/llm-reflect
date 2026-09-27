@@ -1,3 +1,3 @@
 # LLM Reflect repository guidance
 
-@DEVELOPMENT.md
+@docs/development.md

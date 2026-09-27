@@ -6,7 +6,7 @@ Turn corrections to your coding agent into better instructions, native memories,
 and reusable skills.
 
 Supports Codex, Claude Code, Cursor, Gemini CLI, OpenCode, Copilot CLI, and
-Antigravity CLI. See [provider support](PROVIDERS.md#capabilities) for capabilities.
+Antigravity CLI. See [provider support](docs/providers.md#capabilities) for capabilities.
 
 ## Install
 
@@ -52,13 +52,13 @@ python3 tools/reflect.py scan --days 14 --format text
 
 Add `--provider claude` before the command to select another provider.
 Use `--limit N` for longer text reports or `--format json` for complete data.
-See [memory adapters](PROVIDERS.md#memory-adapters) for reading and reviewed writes.
+See [memory adapters](docs/providers.md#memory-adapters) for reading and reviewed writes.
 
 ## Documentation
 
-- [Provider guide](PROVIDERS.md)
-- [Codex guide](CODEX.md)
-- [Development](DEVELOPMENT.md) and [releases](RELEASING.md)
+- [Provider guide](docs/providers.md)
+- [Codex guide](docs/codex.md)
+- [Development and release checks](docs/development.md)
 
 Based on [claude-reflect](https://github.com/BayramAnnakov/claude-reflect).
 [MIT license](LICENSE).

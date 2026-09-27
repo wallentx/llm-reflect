@@ -2,7 +2,7 @@
 
 LLM Reflect (`wallentx/llm-reflect`) provides reviewed learning workflows for
 Codex, Claude Code, Cursor, Gemini CLI, OpenCode, Copilot CLI, and Antigravity CLI.
-See [README.md](README.md) for the current product and [PROVIDERS.md](PROVIDERS.md)
+See [README.md](../README.md) for the current product and the [provider guide](providers.md)
 for each adapter's capabilities and installation paths.
 
 ## Maintained source
@@ -46,14 +46,23 @@ normalized JSONL imports; do not guess at undocumented history databases or use
 another provider's sessions. Only Codex supports subprocess semantic analysis.
 Use `paths` and `targets` for provider-specific destinations.
 
-## Validation
+## Validation and release checks
 
 ```sh
 python3 tools/build_packages.py
 uv run --no-project --with pytest python -m pytest tests -q
 python3 tools/build_packages.py --check
 git diff --check
+claude plugin validate plugins/claude
 ```
+
+The upstream version in `.claude-plugin/plugin.json` is the base for generated
+packages. Content-derived versions change when shared code or native metadata
+changes; keep existing native plugin IDs and queue paths compatible.
+
+Before publishing, smoke-test the installer and selected native plugins in
+isolated profiles. Check that repeated setup preserves settings and removal
+retains queues. CI covers Linux, macOS and Windows with Python 3.11-3.14.
 
 Tests use temporary homes and synthetic history. Keep fixtures isolated from the
 operator's history, configuration, queues, and credentials. Do not clear a live
@@ -66,8 +75,8 @@ usage for scripts. The standalone installer must preserve unrelated settings and
 unmanaged or edited files, and keep `--dry-run` read-only. Preserve backups and
 ownership tracking when changing registration/removal behavior.
 
-See [CODEX.md](CODEX.md) for Codex-specific usage and
-[RELEASING.md](RELEASING.md) for release validation.
+See the [Codex guide](codex.md) for Codex-specific usage and
+[upstream release history](upstream/changelog.md) for the inherited version history.
 
 ## Repeatable upstream sync
 
@@ -113,7 +122,6 @@ git diff HEAD
 ```
 
 The original commands, hooks, scripts, and root plugin manifest remain the
-upstream Claude implementation. The [README](README.md) describes LLM Reflect's
+upstream Claude implementation. The [README](../README.md) describes LLM Reflect's
 shared runtime and provider adapters. See the native
-[reflect skill](reflect/skills/reflect/SKILL.md) for the shared review workflow.
-
+[reflect skill](../reflect/skills/reflect/SKILL.md) for the shared review workflow.

@@ -303,7 +303,7 @@ confirm no installer is running before removing a stale lock manually.
 Shared source lives in `reflect/`; native manifests and hooks live in
 `providers/`. `packages/reflect/` is the generated standalone runtime;
 `plugins/codex/` and `plugins/claude/` are generated native bundles.
-See [DEVELOPMENT.md](DEVELOPMENT.md). After editing maintained source:
+See the [development guide](development.md). After editing maintained source:
 
 ```sh
 python3 tools/build_packages.py

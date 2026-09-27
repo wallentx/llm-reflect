@@ -1,6 +1,6 @@
 # LLM Reflect for Codex
 
-For the standalone installer and other coding agents, see [provider support](PROVIDERS.md).
+For the standalone installer and other coding agents, see [provider support](providers.md).
 The Codex marketplace commands and existing queues remain compatible.
 
 A Codex marketplace plugin for correction capture, reviewed learning proposals,
@@ -106,7 +106,7 @@ from another project or pass `--project PATH`. Installed runtimes provide the
 same commands through `reflect`. Text output groups skills and bounds rows with
 `--limit N` (default 20); `--format json` returns complete data. `status` avoids
 session-history enumeration; `paths` still lists session files when needed.
-See [memory adapters](PROVIDERS.md#memory-adapters) for versioned memory roots,
+See [memory adapters](providers.md#memory-adapters) for versioned memory roots,
 native note creation, and exact reviewed change plans.
 
 Scan and queue inspection do not mutate data. `compare` and `--semantic` run Codex
@@ -122,7 +122,7 @@ before removing that lock manually.
 
 ## Development
 
-See [DEVELOPMENT.md](DEVELOPMENT.md) for the shared source layout, builds, tests,
+See the [development guide](development.md) for the shared source layout, builds, tests,
 and upstream synchronization.
 
 ## Runtime references

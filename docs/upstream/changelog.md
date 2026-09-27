@@ -2,7 +2,7 @@
 
 The release entries below describe upstream `claude-reflect`. LLM Reflect is
 maintained at `wallentx/llm-reflect`; its current multi-provider behavior and
-installation are documented in [README.md](README.md).
+installation are documented in [README.md](../../README.md).
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
@@ -50,7 +50,7 @@ nothing for a large set of users. Neither errored.
 - Legacy bash tests skip explicitly when `jq` is absent. Without it six failed and, less visibly, the `test_bash_ignores_*` tests *passed* for the wrong reason: a `jq`-less script emits nothing and they assert an absence.
 
 ### Known issues
-See [BACKLOG.md](BACKLOG.md) entry 6 for verified findings deliberately left in
+See [upstream backlog snapshot](https://github.com/wallentx/llm-reflect/blob/afab247d33a935cddac3827ce169946f1487a2ad/BACKLOG.md) entry 6 for verified findings deliberately left in
 this release, each with the cost of leaving it — including a read-modify-write
 race between concurrent sessions in one project, `~/.claude` being inside the
 inclusion allowlist, and auto-memory being keyed on cwd where Claude Code keys
