@@ -259,7 +259,7 @@ class UpdateTests(unittest.TestCase):
         self.assertEqual(result.returncode, 0, result.stderr + result.stdout)
         self.assertEqual(cursor.read_bytes(), before)
         self.assertEqual(installer.read_json(installer.registry_path())["providers"]["cursor"], registry)
-        self.assertIn((prefix / "share/reflect/scripts/reflect.py").as_posix(),
+        self.assertIn(str(prefix / "share/reflect/scripts/reflect.py"),
                       (providers.skill_home("gemini") / "reflect/SKILL.md").read_text(encoding="utf-8"))
 
     def test_update_migrates_owned_codex_bootstrap_metadata_to_shared_runtime(self):
@@ -392,9 +392,12 @@ class CheckoutUpdateTests(unittest.TestCase):
         data["unrelated"] = {"keep": True}
         settings.write_bytes(installer.encoded(data))
         skill = upstream / "reflect/skills/reflect/SKILL.md"
-        skill.write_text(skill.read_text(encoding="utf-8") + "\nUpdated fixture skill.\n", encoding="utf-8")
+        # Match .gitattributes before hashing; Git normalizes CRLF on commit.
+        skill.write_text(skill.read_text(encoding="utf-8") + "\nUpdated fixture skill.\n",
+                         encoding="utf-8", newline="\n")
         runtime = upstream / "reflect/scripts/updater.py"
-        runtime.write_text(runtime.read_text(encoding="utf-8") + "\n# Updated fixture runtime.\n", encoding="utf-8")
+        runtime.write_text(runtime.read_text(encoding="utf-8") + "\n# Updated fixture runtime.\n",
+                           encoding="utf-8", newline="\n")
         subprocess.run([sys.executable, str(upstream / "tools/build_packages.py")], check=True, capture_output=True)
         self.commit(upstream)
         # Invoke the old installed runtime, which must preserve the custom prefix
