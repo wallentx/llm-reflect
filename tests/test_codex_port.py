@@ -251,30 +251,30 @@ class PackageTests(unittest.TestCase):
             self.assertEqual(json.loads(result.stdout), [])
 
     def test_native_parity_contract_catches_new_upstream_surface(self):
-        contract = json.loads((ROOT / "codex_port/compatibility.json").read_text())
+        contract = json.loads((ROOT / "codex_port/compatibility.json").read_text(encoding="utf-8"))
         commands = {p.stem for p in (ROOT / "commands").glob("*.md")}
         self.assertEqual(set(contract["commands"]), commands)
         for name, options in contract["commands"].items():
-            text = (ROOT / "commands" / (name + ".md")).read_text()
+            text = (ROOT / "commands" / (name + ".md")).read_text(encoding="utf-8")
             if "## Arguments" in text:
                 arguments = text.split("## Arguments", 1)[1].split("\n## ", 1)[0]
                 self.assertEqual(set(re.findall(r"--[a-z-]+", arguments)), set(options), name)
-            skill = (PLUGIN / "skills" / name / "SKILL.md").read_text()
+            skill = (PLUGIN / "skills" / name / "SKILL.md").read_text(encoding="utf-8")
             for option in options:
                 self.assertIn(option, skill)
-        hooks = json.loads((ROOT / "hooks/hooks.json").read_text())["hooks"]
+        hooks = json.loads((ROOT / "hooks/hooks.json").read_text(encoding="utf-8"))["hooks"]
         self.assertEqual(set(hooks), set(contract["hooks"]))
-        self.assertEqual(set(hooks), set(json.loads((PLUGIN / "hooks/hooks.json").read_text())["hooks"]))
+        self.assertEqual(set(hooks), set(json.loads((PLUGIN / "hooks/hooks.json").read_text(encoding="utf-8"))["hooks"]))
         scripts = {p.relative_to(ROOT / "scripts").as_posix() for p in (ROOT / "scripts").rglob("*.py")}
         self.assertEqual(scripts, set(contract["scripts"]))
 
     def test_marketplace_and_manifest_resolve(self):
-        marketplace = json.loads((ROOT / ".agents/plugins/marketplace.json").read_text())
+        marketplace = json.loads((ROOT / ".agents/plugins/marketplace.json").read_text(encoding="utf-8"))
         source = ROOT / marketplace["plugins"][0]["source"]["path"]
-        manifest = json.loads((source / ".codex-plugin/plugin.json").read_text())
+        manifest = json.loads((source / ".codex-plugin/plugin.json").read_text(encoding="utf-8"))
         self.assertEqual(manifest["name"], source.name)
         self.assertTrue((source / manifest["skills"]).is_dir())
-        for groups in json.loads((source / "hooks/hooks.json").read_text())["hooks"].values():
+        for groups in json.loads((source / "hooks/hooks.json").read_text(encoding="utf-8"))["hooks"].values():
             self.assertIn("${PLUGIN_ROOT}/scripts/reflect.py", groups[0]["hooks"][0]["command"])
 
 

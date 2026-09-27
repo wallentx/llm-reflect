@@ -19,9 +19,9 @@ class SyncTests(unittest.TestCase):
             shutil.copytree(ROOT / directory, self.root / directory, ignore=shutil.ignore_patterns("__pycache__"))
         shutil.copyfile(ROOT / "SKILL.md", self.root / "SKILL.md")
         shutil.copyfile(ROOT / "LICENSE", self.root / "LICENSE")
-        (self.root / ".gitignore").write_text("__pycache__/\n.pytest_cache/\n")
+        (self.root / ".gitignore").write_text("__pycache__/\n.pytest_cache/\n", encoding="utf-8")
         (self.root / "tests").mkdir()
-        (self.root / "tests/test_minimal.py").write_text("def test_generated():\n    assert True\n")
+        (self.root / "tests/test_minimal.py").write_text("def test_generated():\n    assert True\n", encoding="utf-8")
         self.git("init", "-b", "dev")
         self.git("config", "user.email", "synthetic@example.invalid")
         self.git("config", "user.name", "Synthetic Test")
@@ -41,7 +41,8 @@ class SyncTests(unittest.TestCase):
     def upstream_change(self):
         self.git("switch", "main")
         source = self.root / "scripts/lib/reflect_utils.py"
-        source.write_text(source.read_text() + "\n# Synthetic upstream detector update.\n")
+        source.write_text(source.read_text(encoding="utf-8") + "\n# Synthetic upstream detector update.\n",
+                          encoding="utf-8")
         self.git("add", ".")
         self.git("commit", "-m", "upstream fix")
         self.git("switch", "dev")
@@ -65,15 +66,15 @@ class SyncTests(unittest.TestCase):
         self.assertEqual(main, self.git("rev-parse", "main"))
         self.assertEqual(main, self.git("rev-parse", "MERGE_HEAD"))
         vendor = self.root / "plugins/codex-reflect/scripts/vendor/reflect_utils.py"
-        self.assertIn("Synthetic upstream detector update", vendor.read_text())
+        self.assertIn("Synthetic upstream detector update", vendor.read_text(encoding="utf-8"))
         self.assertIn("Validated", result.stdout)
 
     def test_refuses_dirty_and_wrong_branch(self):
-        (self.root / "user-work.txt").write_text("keep this")
+        (self.root / "user-work.txt").write_text("keep this", encoding="utf-8")
         result = self.sync("--apply")
         self.assertNotEqual(result.returncode, 0)
         self.assertIn("clean", result.stderr)
-        self.assertEqual((self.root / "user-work.txt").read_text(), "keep this")
+        self.assertEqual((self.root / "user-work.txt").read_text(encoding="utf-8"), "keep this")
         self.git("switch", "main")
         result = self.sync("--apply")
         self.assertNotEqual(result.returncode, 0)
@@ -81,11 +82,11 @@ class SyncTests(unittest.TestCase):
 
     def test_conflict_preserved_without_reset(self):
         self.git("switch", "main")
-        (self.root / "SKILL.md").write_text("upstream competing edit\n")
+        (self.root / "SKILL.md").write_text("upstream competing edit\n", encoding="utf-8")
         self.git("add", ".")
         self.git("commit", "-m", "upstream conflicting change")
         self.git("switch", "dev")
-        (self.root / "SKILL.md").write_text("user competing edit\n")
+        (self.root / "SKILL.md").write_text("user competing edit\n", encoding="utf-8")
         self.git("add", ".")
         self.git("commit", "-m", "local conflicting change")
         main = self.git("rev-parse", "main")
@@ -93,16 +94,16 @@ class SyncTests(unittest.TestCase):
         self.assertNotEqual(result.returncode, 0)
         self.assertIn("UU SKILL.md", self.git("status", "--porcelain"))
         self.assertEqual(main, self.git("rev-parse", "main"))
-        self.assertIn("user competing edit", (self.root / "SKILL.md").read_text())
+        self.assertIn("user competing edit", (self.root / "SKILL.md").read_text(encoding="utf-8"))
 
     def test_native_changes_update_cache_version_and_rebuild_is_stable(self):
         def build():
             subprocess.run([sys.executable, "tools/build_codex.py"], cwd=str(self.root), capture_output=True, check=True)
-            return json.loads((self.root / "plugins/codex-reflect/.codex-plugin/plugin.json").read_text())["version"]
+            return json.loads((self.root / "plugins/codex-reflect/.codex-plugin/plugin.json").read_text(encoding="utf-8"))["version"]
         first = build()
         self.assertEqual(build(), first)
         path = self.root / "codex_port/skills/reflect/SKILL.md"
-        path.write_text(path.read_text() + "\nSynthetic native improvement.\n")
+        path.write_text(path.read_text(encoding="utf-8") + "\nSynthetic native improvement.\n", encoding="utf-8")
         self.assertNotEqual(build(), first)
 
 
