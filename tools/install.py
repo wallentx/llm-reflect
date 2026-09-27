@@ -13,7 +13,7 @@ import subprocess
 sys.dont_write_bytecode = True
 
 ROOT = Path(__file__).resolve().parents[1]
-sys.path.insert(0, str(ROOT / "plugins/codex-reflect/scripts"))
+sys.path.insert(0, str(ROOT / "packages/reflect/scripts"))
 from installer import apply_writes, encoded, file_plan, read_json, shell_command
 import installer
 import providers
@@ -40,17 +40,16 @@ def main():
             # Reload imports and installer logic from the freshly pulled checkout.
             return subprocess.run([sys.executable, str(ROOT / "tools/install.py"),
                                    *sys.argv[1:], "--refreshed"], check=False).returncode
-    from build_codex import render
-    from build_providers import render as render_providers
-    for path, content in list(render().items()) + list(render_providers().items()):
+    from build_packages import render
+    for path, content in render().items():
         if not (ROOT / path).is_file() or (ROOT / path).read_bytes() != content:
-            raise ValueError("Generated packages are stale. Run python3 tools/build_codex.py and python3 tools/build_providers.py first.")
+            raise ValueError("Generated packages are stale. Run python3 tools/build_packages.py first.")
     prefix = args.prefix.expanduser().absolute()
     destination = prefix / "share/reflect"
     manifest_path = destination / "install-manifest.json"
     old = read_json(manifest_path).get("files", {})
     files, writes = {}, {}
-    source = ROOT / "plugins/codex-reflect"
+    source = ROOT / "packages/reflect"
     for path in sorted(source.rglob("*")):
         if path.is_file() and "__pycache__" not in path.parts:
             file_plan(destination / path.relative_to(source), path.read_bytes(), old, writes, files)

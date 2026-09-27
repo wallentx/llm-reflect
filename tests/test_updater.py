@@ -231,6 +231,39 @@ class UpdateTests(unittest.TestCase):
         self.assertIn((prefix / "share/reflect/scripts/reflect.py").as_posix(),
                       (providers.skill_home("gemini") / "reflect/SKILL.md").read_text(encoding="utf-8"))
 
+    def test_update_migrates_owned_codex_bootstrap_metadata_to_shared_runtime(self):
+        prefix = self.home / "old custom prefix"
+        bootstrap = [sys.executable, str(ROOT / "tools/install.py"), "--prefix", str(prefix), "--no-configure"]
+        result = subprocess.run(bootstrap, capture_output=True, text=True, encoding="utf-8")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        package = prefix / "share/reflect"
+        script = package / "scripts/reflect.py"
+        result = self.cli("gemini", "init", "--provider", "gemini", script=script)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.cli("gemini", "capture", text="remember: preserve this queued correction", script=script)
+        queue = self.cli("gemini", "queue", script=script).stdout
+        settings = (self.home / ".gemini/settings.json").read_bytes()
+        manifest_path = package / "install-manifest.json"
+        manifest = installer.read_json(manifest_path)
+        # Older standalone installs copied Codex's plugin-only files and recorded
+        # only the checkout. The new bundle must remove those owned files safely.
+        old_files = {package / ".codex-plugin/plugin.json": b'{"name":"codex-reflect"}\n',
+                     package / "hooks/hooks.json": b'{"hooks":{}}\n',
+                     package / "source.json": installer.encoded({"checkout": str(ROOT)})}
+        for path, content in old_files.items():
+            installer.atomic_write(path, content)
+            manifest["files"][str(path)] = installer.digest(content)
+        installer.atomic_write(manifest_path, installer.encoded(manifest))
+        result = self.cli("gemini", "init", "-u", "--no-pull", script=script)
+        self.assertEqual(result.returncode, 0, result.stderr + result.stdout)
+        self.assertFalse((package / ".codex-plugin/plugin.json").exists())
+        self.assertFalse((package / "hooks/hooks.json").exists())
+        self.assertTrue((package / "runtime.json").is_file())
+        self.assertEqual(installer.read_json(package / "source.json")["prefix"], str(prefix))
+        self.assertEqual(self.cli("gemini", "queue", script=script).stdout, queue)
+        self.assertEqual((self.home / ".gemini/settings.json").read_bytes(), settings)
+        self.assertEqual(installer.read_json(installer.registry_path())["providers"]["gemini"]["method"], "local")
+
 
 @unittest.skipUnless(shutil.which("git"), "Git is required for checkout update fixtures")
 class CheckoutUpdateTests(unittest.TestCase):
@@ -327,12 +360,11 @@ class CheckoutUpdateTests(unittest.TestCase):
         data = installer.read_json(settings)
         data["unrelated"] = {"keep": True}
         settings.write_bytes(installer.encoded(data))
-        skill = upstream / "codex_port/skills/reflect/SKILL.md"
+        skill = upstream / "reflect/skills/reflect/SKILL.md"
         skill.write_text(skill.read_text(encoding="utf-8") + "\nUpdated fixture skill.\n", encoding="utf-8")
-        runtime = upstream / "codex_port/scripts/updater.py"
+        runtime = upstream / "reflect/scripts/updater.py"
         runtime.write_text(runtime.read_text(encoding="utf-8") + "\n# Updated fixture runtime.\n", encoding="utf-8")
-        for builder in ("build_codex.py", "build_providers.py"):
-            subprocess.run([sys.executable, str(upstream / "tools" / builder)], check=True, capture_output=True)
+        subprocess.run([sys.executable, str(upstream / "tools/build_packages.py")], check=True, capture_output=True)
         self.commit(upstream)
         # Invoke the old installed runtime, which must preserve the custom prefix
         # and use the newly pulled installer in a fresh process.

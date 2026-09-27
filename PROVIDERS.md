@@ -288,8 +288,7 @@ continue to work. Capture is not approval to change instructions.
 
 ## Upgrade, ownership, and validation
 
-Rerun `install.sh` followed by `reflect init --provider ...` to refresh runtime
-and integrations. The installer preserves unrelated JSON values and hook entries,
+Use `install.sh -u` or the setup picker's `u` key to refresh runtime and integrations. The installer preserves unrelated JSON values and hook entries,
 deduplicates its own registrations, and refuses unmanaged or edited skill files,
 modified managed hooks, malformed configuration, and symlink destinations.
 Backups and the ownership registry live under `$XDG_STATE_HOME/reflect`.
@@ -298,15 +297,15 @@ selected native marketplace plugin; queues and unrelated
 provider installations remain. Interrupted setup may leave `installation.lock`;
 confirm no installer is running before removing a stale lock manually.
 
-Source lives in `codex_port/`; the name is retained for downstream sync stability.
-Both marketplace packages are generated. After editing the overlay:
+Shared source lives in `reflect/`; native manifests and hooks live in
+`providers/`. `packages/reflect/` is the generated standalone runtime;
+`plugins/codex/` and `plugins/claude/` are generated native bundles.
+See [DEVELOPMENT.md](DEVELOPMENT.md). After editing maintained source:
 
 ```sh
-python3 tools/build_codex.py
-python3 tools/build_providers.py
+python3 tools/build_packages.py
 uv run --no-project --with pytest python -m pytest tests -q
-python3 tools/build_codex.py --check
-python3 tools/build_providers.py --check
+python3 tools/build_packages.py --check
 ```
 
 Tests use synthetic histories and isolated homes, plus POSIX pseudo-terminals to

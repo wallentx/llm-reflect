@@ -8,24 +8,21 @@ committing or publishing.
 ## Versions and package generation
 
 The upstream version in `.claude-plugin/plugin.json` is the base for generated
-marketplace packages. The Codex builder adds a deterministic content suffix; the
-Claude builder includes its provider-specific metadata and hook content in its
-suffix. Regeneration changes cache identities when package content changes.
+marketplace packages. The package builder adds deterministic content suffixes to the shared runtime
+and native bundles, including each provider's metadata and hooks. Regeneration changes cache identities when package content changes.
 
-Do not hand-edit versions or other files in `plugins/codex-reflect/` or
-`plugins/claude-reflect/`. A repository rename changes repository metadata and
+Do not hand-edit versions or other files in `packages/reflect/`,
+`plugins/codex/` or `plugins/claude/`. A repository rename changes repository metadata and
 links; existing plugin IDs and state paths remain compatible.
 
 ## Validate before publishing
 
 ```sh
-python3 tools/build_codex.py
-python3 tools/build_providers.py
+python3 tools/build_packages.py
 uv run --no-project --with pytest python -m pytest tests -q
-python3 tools/build_codex.py --check
-python3 tools/build_providers.py --check
+python3 tools/build_packages.py --check
 git diff --check
-claude plugin validate plugins/claude-reflect
+claude plugin validate plugins/claude
 ```
 
 Review the maintained source, generated packages, and documentation together.

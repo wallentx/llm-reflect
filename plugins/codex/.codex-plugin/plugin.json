@@ -1,0 +1,27 @@
+{
+  "name": "codex-reflect",
+  "description": "LLM Reflect for Codex: capture corrections, review learning proposals, and discover reusable skills.",
+  "author": {
+    "name": "wallentx; upstream by Bayram Annakov"
+  },
+  "repository": "https://github.com/wallentx/llm-reflect",
+  "license": "MIT",
+  "skills": "./skills/",
+  "interface": {
+    "displayName": "LLM Reflect",
+    "shortDescription": "Learn from corrections with reviewed proposals",
+    "longDescription": "Capture corrections, scan Codex history, review and organize AGENTS.md guidance, and discover reusable skills with explicit approval.",
+    "developerName": "wallentx",
+    "category": "Productivity",
+    "capabilities": [
+      "Read",
+      "Write"
+    ],
+    "defaultPrompt": [
+      "Review my queued learnings",
+      "Discover reusable skills from recent sessions",
+      "Check my guidance for duplicates"
+    ]
+  },
+  "version": "3.2.0+codex.5726af0e785b"
+}

@@ -9,6 +9,6 @@ from pathlib import Path
 import runpy
 
 sys.dont_write_bytecode = True
-scripts = Path(__file__).resolve().parents[1] / "plugins/codex-reflect/scripts"
+scripts = Path(__file__).resolve().parents[1] / "packages/reflect/scripts"
 sys.path.insert(0, str(scripts))
 runpy.run_path(str(scripts / "reflect.py"), run_name="__main__")

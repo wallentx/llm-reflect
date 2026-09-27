@@ -7,7 +7,7 @@
   "plugins": [
     {
       "name": "reflect",
-      "source": "./plugins/claude-reflect",
+      "source": "./plugins/claude",
       "description": "Provider-aware correction capture and independently reviewed learning proposals"
     },
     {

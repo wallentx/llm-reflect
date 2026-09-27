@@ -50,24 +50,22 @@ def main():
     if importlib.util.find_spec("pytest") is None:
         raise SystemExit("pytest is required before merging. Use: "
                          "uv run --no-project --with pytest python tools/sync_upstream.py --apply")
-    old_inputs_path = ROOT / "plugins/codex-reflect/upstream-inputs.json"
+    old_inputs_path = ROOT / "packages/reflect/upstream-inputs.json"
     old_inputs = json.loads(old_inputs_path.read_text()) if old_inputs_path.exists() else {}
     result = git("merge", "--no-ff", "--no-commit", source, check=False)
     print(result.stdout, end="")
     print(result.stderr, file=sys.stderr, end="")
     if result.returncode:
-        print("Merge stopped. Resolve conflicts, run tools/build_codex.py and tests, then review the merge."
+        print("Merge stopped. Resolve conflicts, run tools/build_packages.py and tests, then review the merge."
               " No reset, commit, or push was performed.", file=sys.stderr)
         return result.returncode
-    run(sys.executable, "tools/build_codex.py")
-    run(sys.executable, "tools/build_providers.py")
+    run(sys.executable, "tools/build_packages.py")
     new_inputs = json.loads(old_inputs_path.read_text())
     changed = sorted(p for p in old_inputs.keys() | new_inputs.keys() if old_inputs.get(p) != new_inputs.get(p))
     if changed:
         print("Upstream inputs changed; review native parity for:\n" + "\n".join(changed))
     run(sys.executable, "-m", "pytest", "tests", "-q")
-    run(sys.executable, "tools/build_codex.py", "--check")
-    run(sys.executable, "tools/build_providers.py", "--check")
+    run(sys.executable, "tools/build_packages.py", "--check")
     print("Validated. Review git diff HEAD, stage generated files, and commit when ready. No push performed.")
     return 0
 

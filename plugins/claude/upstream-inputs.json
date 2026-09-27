@@ -1,0 +1,23 @@
+{
+  ".claude-plugin/plugin.json": "8b1bf0d599576fafe965c6e4662f1dac38aa305b6006fd70802ca3031a96276c",
+  "SKILL.md": "7d035c84ea96ba9808bc9731533e1bafdbbdf113317ef151ead458d18242067b",
+  "commands/reflect-skills.md": "a3ae02c89cc197ae9a8d906c6c60409b8df78a65bee30001e241299dd41168ac",
+  "commands/reflect.md": "d8ba19ec1bb4b5b23c6a30093eef3a16adce44c3ce5ff3e3e987dfd9f6f950ba",
+  "commands/skip-reflect.md": "269f614accb89c114980062eafe81db2dd051e2e617bee31b047114b32118c24",
+  "commands/view-queue.md": "5e202d3dbdb87afeb06158704043e591c0e20ae3fb3ab408d504f52ac5bed430",
+  "hooks/hooks.json": "58184664390e9a4c5309f0eece8e2ec146226100fef9837725ffc5533614ef9e",
+  "scripts/capture_learning.py": "2a0db299aa6e2ff219d029cdc761b3ad3b896d6ea444a1a907e8fd87f2ac55bc",
+  "scripts/check_learnings.py": "c2c8e1d1743560aab72a3a6c56b21854132cd4984150a8baaa8dbc50d1c1687f",
+  "scripts/clear_queue.py": "380fd49a4513fdd7d2b59fe9243d25a5b6b42f41ce67986cb926401a4aac8817",
+  "scripts/compare_detection.py": "da5954af5a0863cdf304253fd5a40a88e87ef67be0ec774fbfedf673d18e2b7b",
+  "scripts/extract_session_learnings.py": "7c7e51df4965202cf9b184a4af45b5bcae950592891b23087d644a297397b091",
+  "scripts/extract_tool_errors.py": "2fc1c1b6da24beae81bef1859179f92a7bed61d7896d5fd775c0fb878b49f7fc",
+  "scripts/extract_tool_rejections.py": "bdf4c36432df0d1c173eeaf0df41416a8f57b0d12a3065a23e12c83ea8932af4",
+  "scripts/lib/__init__.py": "8c06b919dca34bacb54f357d9a5aa10e6ee7c3e0020a47177d3dec0a4342a03f",
+  "scripts/lib/reflect_utils.py": "0bd30d9c0e619bb78266e6c7ac7efc0ea0ab7848a32881acb1703e2766dd4b59",
+  "scripts/lib/semantic_detector.py": "e72f51e452b2cbf880d2e6f0c7c461903cfe3220e1729c917c35007d652b59df",
+  "scripts/post_commit_reminder.py": "3c13413f8911e3f24885c82b704bcbefe54a07bdcd702b671918c9720ea75801",
+  "scripts/project_paths.py": "0122e775ca1d4f5e46b279be359dfb974a98d23f406cb3614589f94d24d26b58",
+  "scripts/read_queue.py": "56629bb5632f7e48c6caa9770ea886ff5e0a56a2829576aca6bd74427c671c69",
+  "scripts/session_start_reminder.py": "7bc38732fe54b8f5bafd694974413b4926d5f0d56af4f0803641a9f9e2188427"
+}

@@ -11,7 +11,7 @@ import unittest
 from unittest.mock import patch
 
 ROOT = Path(__file__).resolve().parents[1]
-PACKAGE = ROOT / "plugins/codex-reflect"
+PACKAGE = ROOT / "packages/reflect"
 sys.path.insert(0, str(PACKAGE / "scripts"))
 import installer
 import providers
@@ -51,7 +51,7 @@ class ProviderTests(unittest.TestCase):
 
     def test_install_and_marketplace_runtimes_reject_python_below_311_without_writes(self):
         scripts = (ROOT / "tools/install.py", PACKAGE / "scripts/reflect.py",
-                   ROOT / "plugins/claude-reflect/scripts/reflect.py")
+                   ROOT / "plugins/claude/scripts/reflect.py")
         runner = ("import runpy, sys; "
                   "sys.version_info = tuple(map(int, sys.argv[1].split('.'))); "
                   "sys.argv = [sys.argv[2]]; "
@@ -254,11 +254,11 @@ class ProviderTests(unittest.TestCase):
             self.assertEqual(len(json.loads(result.stdout)), 1)
 
     def test_claude_marketplace_bundle_defaults_to_claude(self):
-        result = subprocess.run([sys.executable, str(ROOT / "tools/build_providers.py"), "--check"], capture_output=True, text=True)
+        result = subprocess.run([sys.executable, str(ROOT / "tools/build_packages.py"), "--check"], capture_output=True, text=True)
         self.assertEqual(result.returncode, 0, result.stderr)
         with patch.dict(os.environ):
             os.environ.pop("REFLECT_PROVIDER", None)
-            result = subprocess.run([sys.executable, str(ROOT / "plugins/claude-reflect/scripts/reflect.py"), "paths"],
+            result = subprocess.run([sys.executable, str(ROOT / "plugins/claude/scripts/reflect.py"), "paths"],
                                     capture_output=True, text=True)
         self.assertEqual(json.loads(result.stdout)["provider"]["id"], "claude")
 

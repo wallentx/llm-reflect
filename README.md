@@ -55,7 +55,7 @@ See [memory adapters](PROVIDERS.md#memory-adapters) for reading and reviewed wri
 
 - [Provider guide](PROVIDERS.md)
 - [Codex guide](CODEX.md)
-- [Development and releases](RELEASING.md)
+- [Development](DEVELOPMENT.md) and [releases](RELEASING.md)
 
 Based on [claude-reflect](https://github.com/BayramAnnakov/claude-reflect).
 [MIT license](LICENSE).

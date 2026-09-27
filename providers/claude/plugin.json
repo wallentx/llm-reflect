@@ -1,0 +1,9 @@
+{
+  "name": "reflect",
+  "description": "LLM Reflect for Claude Code: reviewed learning proposals, correction capture, and skill discovery.",
+  "author": {
+    "name": "wallentx; upstream by Bayram Annakov"
+  },
+  "license": "MIT",
+  "repository": "https://github.com/wallentx/llm-reflect"
+}
