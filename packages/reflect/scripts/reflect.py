@@ -71,10 +71,10 @@ def hook(event, data):
 def main():
     upstream.ensure_utf8_io()
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--provider", choices=sorted(providers.PROVIDERS), default=providers.default_provider())
+    parser.add_argument("--provider", choices=sorted(providers.PROVIDERS), default=None)
     commands = parser.add_subparsers(dest="action", required=True)
-    from installer import add_init_parser, initialize
-    add_init_parser(commands)
+    from installer import add_installer_parsers, initialize
+    add_installer_parsers(commands)
     hooks = commands.add_parser("hook", help="Read a native provider hook event from stdin")
     hooks.add_argument("event")
     capture_parser = commands.add_parser("capture", help="Capture a correction from stdin (no model call)")
@@ -113,8 +113,10 @@ def main():
             sub.add_argument("--model", default=None)
             sub.add_argument("--semantic", action="store_true", help="Invoke ephemeral Codex analysis (may incur model usage)")
     args = parser.parse_args()
-    providers.select(args.provider)
-    if args.action in ("init", "uninstall"):
+    providers.select(args.provider or providers.default_provider())
+    if args.action == "update" and args.provider:
+        args.selected = [args.provider, *(args.selected or [])]
+    if args.action in ("init", "uninstall", "update"):
         try:
             return initialize(args)
         except (ValueError, OSError, RuntimeError) as exc:

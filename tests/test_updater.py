@@ -1,6 +1,7 @@
 """Provider updates, update-only TUI actions, and a real fast-forward checkout."""
 import argparse
 import io
+import importlib.util
 import json
 import os
 from pathlib import Path
@@ -33,6 +34,36 @@ class UpdateTests(unittest.TestCase):
     def arguments(self, selected=None, dry_run=False, **extra):
         return argparse.Namespace(selected=selected, dry_run=dry_run, remove=False,
                                   method="auto", list=False, refresh_only=True, **extra)
+
+    def test_update_command_defaults_to_all_and_accepts_both_provider_positions(self):
+        spec = importlib.util.spec_from_file_location("reflect_update_cli", fixtures.PACKAGE / "scripts/reflect.py")
+        cli = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(cli)
+        installer.atomic_write(installer.registry_path(), installer.encoded({"providers": {
+            "claude": {"method": "marketplace"}, "cursor": {"method": "local"}, "gemini": {"method": "local"}}}))
+        before = self.snapshot()
+        cases = [(["update"], ["claude", "cursor", "gemini"], False, False),
+                 (["update", "--provider", "gemini"], ["gemini"], False, False),
+                 (["--provider", "gemini", "update"], ["gemini"], False, False),
+                 (["--provider", "cursor", "update", "--provider", "gemini", "--provider", "gemini"],
+                  ["cursor", "gemini"], False, False),
+                 (["update", "--dry-run", "--no-pull"], ["claude", "cursor", "gemini"], True, True)]
+        with patch.object(tui, "choose_providers", side_effect=AssertionError("update must not open the TUI")), \
+             patch.dict(os.environ, {"REFLECT_PROVIDER": "claude"}):
+            for arguments, selected, dry_run, no_pull in cases:
+                with self.subTest(arguments=arguments), patch.object(sys, "argv", ["reflect", *arguments]), \
+                     patch.object(updater, "run_update", return_value=0) as update:
+                    self.assertEqual(cli.main(), 0)
+                    update.assert_called_once_with(selected, dry_run, no_pull)
+        self.assertEqual(self.snapshot(), before)
+
+    def test_update_command_rejects_an_uninstalled_provider_without_mutating(self):
+        before = self.snapshot()
+        result = subprocess.run([sys.executable, str(ROOT / "tools/reflect.py"), "update", "--provider", "cursor"],
+                                capture_output=True, text=True, encoding="utf-8")
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("No installed LLM Reflect integration to update for cursor", result.stderr)
+        self.assertEqual(self.snapshot(), before)
 
     def test_update_selection_includes_only_llm_reflect_and_deduplicates(self):
         installs = {"gemini": {"method": "local"}, "codex": {"method": "marketplace"},
@@ -368,7 +399,8 @@ class CheckoutUpdateTests(unittest.TestCase):
         self.commit(upstream)
         # Invoke the old installed runtime, which must preserve the custom prefix
         # and use the newly pulled installer in a fresh process.
-        result = self.cli("codex", "init", "-u", script=script)
+        result = subprocess.run([sys.executable, str(script), "update"], capture_output=True,
+                                text=True, encoding="utf-8", cwd=str(self.project))
         self.assertEqual(result.returncode, 0, result.stderr + result.stdout)
         self.assertIn("Updated fixture runtime", (script.parent / "updater.py").read_text(encoding="utf-8"))
         for name in names:

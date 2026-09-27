@@ -223,7 +223,7 @@ def local_plan(name, previous, remove=False):
     return writes, {"method": "local", "files": owned, "hooks": hook_state}
 
 
-def add_init_parser(commands):
+def add_installer_parsers(commands):
     for action, description in (("init", "Open the provider install/update/remove picker"),
                                 ("uninstall", "Choose provider integrations to remove; retain queues")):
         parser = commands.add_parser(action, help=description)
@@ -237,6 +237,12 @@ def add_init_parser(commands):
             parser.add_argument("-u", "--update", action="store_true", help="Update installed providers without opening the picker")
             parser.add_argument("--no-pull", action="store_true", help="Use the current checkout when updating")
             parser.add_argument("--refresh-only", action="store_true", help=argparse.SUPPRESS)
+    parser = commands.add_parser("update", help="Update all installed providers, or only the named providers")
+    parser.add_argument("--provider", dest="selected", action="append", choices=sorted(providers.PROVIDERS),
+                        help="Update only this installed provider (repeatable)")
+    parser.add_argument("--dry-run", action="store_true", help="Preview without fetching, writing or running provider CLIs")
+    parser.add_argument("--no-pull", action="store_true", help="Update from the current checkout without fetching Git changes")
+    parser.set_defaults(update=True, remove=False, method="auto", list=False)
 
 
 def source_root():

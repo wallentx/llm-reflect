@@ -67,13 +67,16 @@ restart the agent and review its hook trust prompt after installation.
 
 ```sh
 sh ./install.sh -u
-reflect init -u
-reflect init -u --provider gemini --provider cursor
+reflect update
+reflect update --provider gemini --provider cursor
 ```
 
 Updates fast-forward the checkout's current branch from its configured upstream,
 refresh the standalone runtime, and update installed integrations using their
-existing method. Custom installation prefixes are retained by `reflect init -u`.
+existing method. Custom installation prefixes are retained by `reflect update`.
+Omit `--provider` to update all installed LLM Reflect integrations; repeat it to
+target several. `reflect --provider gemini update` also targets Gemini.
+`reflect init -u` remains available.
 Codex refreshes its configured Git marketplace and plugin cache, or reinstalls
 from a local marketplace; Claude refreshes its marketplace and updates its plugin.
 Local integrations get the current skills, hook bindings, and OpenCode adapter.

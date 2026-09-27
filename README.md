@@ -18,8 +18,9 @@ sh ./install.sh
 
 On Windows, run `python tools/install.py`. Restart your agent after installation.
 
-Update with `sh ./install.sh -u`, or press `u` in the installer to update checked
-providers. On Windows: `python tools/install.py -u`. Restart your agent afterward.
+Update all installed providers with `reflect update`, or one with
+`reflect update --provider gemini`. `sh ./install.sh -u` and the installer's `u` key
+also work. Restart your agent afterward.
 
 ## Use
 
