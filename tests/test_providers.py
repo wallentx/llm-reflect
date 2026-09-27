@@ -48,6 +48,25 @@ class ProviderTests(unittest.TestCase):
     def snapshot(self):
         return {str(p.relative_to(self.home)): p.read_bytes() for p in self.home.rglob("*") if p.is_file()}
 
+    def test_install_and_marketplace_runtimes_reject_python_below_311_without_writes(self):
+        scripts = (ROOT / "tools/install.py", PACKAGE / "scripts/reflect.py",
+                   ROOT / "plugins/claude-reflect/scripts/reflect.py")
+        runner = ("import runpy, sys; "
+                  "sys.version_info = tuple(map(int, sys.argv[1].split('.'))); "
+                  "sys.argv = [sys.argv[2]]; "
+                  "runpy.run_path(sys.argv[0], run_name='__main__')")
+        before = self.snapshot()
+        for version in ("3.8.0", "3.10.0"):
+            for script in scripts:
+                with self.subTest(version=version, script=script):
+                    result = subprocess.run([sys.executable, "-c", runner, version, str(script)],
+                                            cwd=str(self.project), capture_output=True, text=True)
+                    self.assertEqual(result.returncode, 1)
+                    self.assertIn("Python 3.11 or newer", result.stderr)
+                    self.assertNotIn("Traceback", result.stderr)
+                    self.assertEqual(result.stdout, "")
+                    self.assertEqual(self.snapshot(), before)
+
     def test_all_native_capture_payloads_and_queue_isolation(self):
         events = {"codex": "UserPromptSubmit", "claude": "UserPromptSubmit", "gemini": "BeforeAgent",
                   "cursor": "beforeSubmitPrompt", "copilot": "userPromptSubmitted", "opencode": "UserPromptSubmit"}

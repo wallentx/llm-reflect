@@ -14,7 +14,7 @@ Do not assume `${PLUGIN_ROOT}` is available in an interactive shell: the provide
 supplies plugin-root variables to hooks, not ordinary shells.
 Use `python3` (or `python` where that is the installed Python 3 executable).
 Run `paths --project <absolute-project>` to resolve the queue, staging, and audit
-directories. Keep the user's project as the working directory. Python 3.8+ is
+directories. Keep the user's project as the working directory. Python 3.11+ is
 required; no third-party runtime packages are needed.
 
 The CLI supports `queue`, `scan`, `targets`, `entries`, `clear`, `capture`,

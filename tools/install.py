@@ -1,11 +1,15 @@
 #!/usr/bin/env python3
 """Install LLM Reflect from this checkout without dependencies or provider changes."""
+import sys
+
+if sys.version_info < (3, 11):
+    sys.exit("LLM Reflect requires Python 3.11 or newer.")
+
 import argparse
 import json
 import os
 from pathlib import Path
 import subprocess
-import sys
 sys.dont_write_bytecode = True
 
 ROOT = Path(__file__).resolve().parents[1]

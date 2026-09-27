@@ -168,8 +168,7 @@ sessions - the same failure class as the folder-encoding bug, one level up.
 
 **Standalone `AGENTS.md` is not an inclusion-graph seed** (codex #12).
 
-**`ensure_utf8_io` has no test and does not set `errors="replace"`.** It is a
-no-op on Python 3.6, which the README still claims to support. The capture
+**`ensure_utf8_io` has no test and does not set `errors="replace"`.** The capture
 confirmation is ASCII now, but `session_start_reminder.py` still prints
 `⚠️ 📚 💡`.
 *Cost of leaving it:* the function can be gutted and CI stays green.

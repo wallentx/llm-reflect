@@ -10,7 +10,7 @@ hooks, skills, history readers, and an installer. Detection and filtering build 
 
 ## Install
 
-Requires Python 3.8+ and a coding agent that supports the integration listed below.
+Requires Python 3.11+ and a coding agent that supports the integration listed below.
 The runtime uses the Python standard library. On Termux, install Python with
 `pkg install python` if needed.
 
@@ -228,7 +228,7 @@ python3 tools/build_providers.py --check
 ```
 
 CI validates both generated packages and tests on Linux, macOS, and Windows with
-Python 3.8 and 3.11. Fixtures use synthetic histories and isolated homes.
+Python 3.11, 3.12, 3.13, and 3.14. Fixtures use synthetic histories and isolated homes.
 See [release validation](RELEASING.md) and the
 [upstream-sync procedure](CODEX.md#repeatable-upstream-sync).
 

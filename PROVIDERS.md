@@ -1,7 +1,7 @@
 # LLM Reflect provider installation
 
 LLM Reflect shares detection, redaction, queues, review gates, and guidance discovery
-across the seven provider IDs used by Panoptes. Runtime dependencies: Python 3.8+
+across the seven provider IDs used by Panoptes. Runtime dependencies: Python 3.11+
 and the selected coding agent. OpenCode loads its small JavaScript adapter using
 its own runtime. No Python packages, model API keys, or build tools are required.
 

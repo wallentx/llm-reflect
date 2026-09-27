@@ -32,7 +32,7 @@ def render(root=ROOT):
                 "repository": codex_manifest["repository"]}
     # Provider-specific manifest/hook changes must also invalidate its cache.
     content_hash = hashlib.sha256(json.dumps(manifest, sort_keys=True).encode())
-    for path, data in sorted(result.items()):
+    for path, data in sorted(result.items(), key=lambda item: item[0].as_posix()):
         content_hash.update(path.as_posix().encode() + b"\0" + data + b"\0")
     manifest["version"] = codex_manifest["version"] + ".claude." + content_hash.hexdigest()[:12]
     result[CLAUDE_DEST / ".claude-plugin/plugin.json"] = (json.dumps(manifest, indent=2) + "\n").encode()

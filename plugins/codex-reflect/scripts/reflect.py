@@ -1,11 +1,15 @@
 #!/usr/bin/env python3
 """LLM Reflect: provider-aware correction capture and reviewed learning helpers."""
+import sys
+
+if sys.version_info < (3, 11):
+    sys.exit("LLM Reflect requires Python 3.11 or newer.")
+
 import argparse
 import json
 import os
 from pathlib import Path
 import re
-import sys
 sys.dont_write_bytecode = True
 import providers
 

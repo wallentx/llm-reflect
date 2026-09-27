@@ -407,7 +407,13 @@ class PickerTests(unittest.TestCase):
             os.write(master, b"y")
         stdout, _ = process.communicate(timeout=8)
         self.assertEqual(process.returncode, 0, bytes(output))
-        self.assertEqual(termios.tcgetattr(slave), attributes)
+        restored = termios.tcgetattr(slave)
+        if sys.platform == "darwin":
+            # macOS sets this transient input-state bit when ICANON is restored.
+            # All settings, including echo, signals and control characters, must match.
+            restored[3] &= ~termios.PENDIN
+            attributes[3] &= ~termios.PENDIN
+        self.assertEqual(restored, attributes)
         if cancel:
             self.assertIn(b"Cancelled", stdout)
             if bootstrap:

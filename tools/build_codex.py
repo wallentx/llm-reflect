@@ -15,7 +15,7 @@ def inputs(root):
     for directory, pattern in (("commands", "*.md"), ("scripts", "*.py")):
         paths.extend((root / directory).rglob(pattern))
     return {p.relative_to(root).as_posix(): hashlib.sha256(p.read_bytes()).hexdigest()
-            for p in sorted(paths)}
+            for p in sorted(paths, key=lambda path: path.as_posix())}
 
 
 def render(root=ROOT):
@@ -23,7 +23,7 @@ def render(root=ROOT):
     overlay = root / "codex_port"
     manifest = json.loads((overlay / "plugin.json").read_text())
     result = {}
-    for p in sorted(overlay.rglob("*")):
+    for p in sorted(overlay.rglob("*"), key=lambda path: path.as_posix()):
         if p.is_file() and "__pycache__" not in p.parts and p != overlay / "plugin.json":
             result[DEST / p.relative_to(overlay)] = p.read_bytes()
     # Vendor verbatim: fixes to detection, filtering, prompts, and inclusion parsing
@@ -35,7 +35,8 @@ def render(root=ROOT):
     # A deterministic cache version changes for upstream fixes AND native edits.
     # Identical rebuilds keep the same install identity.
     digest = hashlib.sha256(json.dumps(manifest, sort_keys=True).encode())
-    for path, content in sorted(result.items()):
+    # Path ordering is case-insensitive on Windows; hash the same order everywhere.
+    for path, content in sorted(result.items(), key=lambda item: item[0].as_posix()):
         digest.update(path.as_posix().encode() + b"\0" + content + b"\0")
     separator = "." if "+" in upstream["version"] else "+"
     manifest["version"] = upstream["version"] + separator + "codex." + digest.hexdigest()[:12]

@@ -10,7 +10,7 @@ and filtering code reused verbatim.
 
 ## Install
 
-Requires Python 3.8+ and a Codex release supporting marketplace plugins and
+Requires Python 3.11+ and a Codex release supporting marketplace plugins and
 `SessionStart`, `UserPromptSubmit`, `PreCompact`, and `PostToolUse` command hooks.
 The local integration checks use Codex CLI 0.156.1. Ensure `python3` is on PATH;
 on Windows install Python with that executable alias, or change the hook commands
