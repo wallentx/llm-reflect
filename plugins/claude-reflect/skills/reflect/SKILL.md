@@ -1,6 +1,6 @@
 ---
 name: reflect
-description: Review captured corrections, scan provider history, and propose reviewed updates to AGENTS.md or skills. Use for reflecting on learnings, historical scans, memory deduplication, or guidance organization.
+description: Review captured corrections, scan provider history, and propose reviewed updates to native memory, instructions, or skills. Use for reflecting on learnings, historical scans, memory deduplication, or guidance organization.
 ---
 
 # Reflect
@@ -17,8 +17,10 @@ user-approval gates for every persistent learning change.
 | `--scan-history` | Scan this project's supported history; default 30 days |
 | `--history FILE` | Read an explicitly supplied normalized JSONL export |
 | `--days N` | History window in days, positive integer |
-| `--targets` | Run `targets`, explain active/overridden targets, and exit |
-| `--review` | Run `queue`, show confidence, age, decay, and stale flags; exit |
+| `--targets` | Run `targets --format text`, show grouped targets, and exit |
+| `--memory` | Run `memory --format text`, show native memory capabilities/sources, and exit |
+| `--memory-dir DIR` | Read an explicit Markdown memory directory or saved copy |
+| `--review` | Run `queue --format text`, show confidence, age, and stale flags; exit |
 | `--dedupe` | Read `entries`; propose consolidations and resolve contradictions |
 | `--organize` | Review scope, size, duplication, staging, and skill routing |
 | `--include-tool-errors` | Include repeated technical errors; implied by history scan |
@@ -30,9 +32,15 @@ they are not proof. Decay flags pending items only and never deletes guidance.
 
 ## Process
 
+For `--targets`, `--memory`, or `--review`, run only the corresponding display command above
+with `--project <project>` and exit. Use its built-in report, not inline Python.
+Increase `--limit` when more rows are requested. No history scan is needed.
+Pass explicit `--memory-dir DIR` to `memory`, `status`, `targets`, and `entries`.
+
 1. Resolve the script, provider binding, and current project as described in the shared workflow.
-   Read `paths` to check capabilities before attempting a native history scan.
-   Run `queue --project <project>` and `targets --project <project>`. When the
+   Read `status` to check capabilities, target groups, and queue totals without
+   enumerating session files. Run `queue --project <project>` for complete
+   candidate data; use `targets --format json` when exact paths are needed. When the
    queue and audit are empty, offer a first-run history scan; do not silently
    scan other projects. An empty queue does not justify inventing a learning.
 2. For `--scan-history`, use `--history FILE` when an export was supplied; otherwise
@@ -64,6 +72,9 @@ they are not proof. Decay flags pending items only and never deletes guidance.
    apply, edit/re-review, defer, or discard choices. A bulk approval can cover
    several already-reviewed exact diffs. Validate each applied result and retain
    unrelated queue items. Report changed paths and remaining queue count.
+   For native memory destinations, use the shared workflow's memory adapter and
+   exact plan/application process. Remote memory uses native provider tools;
+   managed memory files and unapproved inbox drafts are not editable guidance.
 
 For semantic diagnostics, `compare --project <project> --days N [--model MODEL]`
 compares regex and Codex classification. `contradictions --semantic` checks

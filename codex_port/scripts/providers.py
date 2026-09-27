@@ -59,6 +59,8 @@ def provider_home(name=None):
         path = Path(os.environ.get("CLAUDE_CONFIG_DIR", str(Path.home() / ".claude")))
     elif name == "opencode":
         path = Path(os.environ.get("XDG_CONFIG_HOME", str(Path.home() / ".config"))) / "opencode"
+    elif name == "copilot":
+        path = Path(os.environ.get("COPILOT_HOME", str(Path.home() / ".copilot")))
     else:
         path = Path.home() / PROVIDERS[name]["directory"]
     # Preserve symlink components so installation can reject redirected writes.
@@ -74,6 +76,8 @@ def details():
     info = dict(PROVIDERS[name], id=name)
     info.update(home=str(provider_home()), global_skills=str(skill_home()),
                 automatic_capture=name != "antigravity", semantic_cli=name == "codex")
+    from memory_adapters import details as memory_details
+    info["memory"] = memory_details(name)
     return info
 
 

@@ -1,6 +1,7 @@
 # llm-reflect
 
-Turn corrections to your coding agent into better instructions and reusable skills.
+Turn corrections to your coding agent into better instructions, native memories,
+and reusable skills.
 
 Supports Codex, Claude Code, Cursor, Gemini CLI, OpenCode, Copilot CLI, and
 Antigravity CLI. See [provider support](PROVIDERS.md#capabilities) for capabilities.
@@ -17,13 +18,16 @@ sh ./install.sh
 
 On Windows, run `python tools/install.py`. Restart your agent after installation.
 
+Update with `sh ./install.sh -u`, or press `u` in the installer to update checked
+providers. On Windows: `python tools/install.py -u`. Restart your agent afterward.
+
 ## Use
 
 In Codex, start with `$reflect`. In other agents, invoke the installed `reflect` skill.
 
 | Skill | Purpose | Options |
 |---|---|---|
-| `reflect` | Review corrections and propose instruction updates | `--dry-run`, `--scan-history`, `--days N`, `--history FILE`, `--targets`, `--review`, `--dedupe`, `--organize`, `--include-tool-errors`, `--model MODEL` (Codex) |
+| `reflect` | Review corrections and propose memory/instruction updates | `--dry-run`, `--scan-history`, `--days N`, `--history FILE`, `--targets`, `--memory`, `--memory-dir DIR`, `--review`, `--dedupe`, `--organize`, `--include-tool-errors`, `--model MODEL` (Codex) |
 | `reflect-skills` | Turn recurring workflows into reusable skills | `--days N`, `--project PATH`, `--all-projects`, `--history FILE`, `--dry-run` |
 | `view-queue` | Show pending corrections | - |
 | `skip-reflect` | Discard pending corrections | - |
@@ -32,6 +36,20 @@ In Codex, start with `$reflect`. In other agents, invoke the installed `reflect`
 $reflect --scan-history --days 30
 $reflect-skills --all-projects --days 14 --dry-run
 ```
+
+Direct inspection from this checkout:
+
+```sh
+python3 tools/reflect.py status
+python3 tools/reflect.py memory --all-providers
+python3 tools/reflect.py targets --format text
+python3 tools/reflect.py queue --format text
+python3 tools/reflect.py scan --days 14 --format text
+```
+
+Add `--provider claude` before the command to select another provider.
+Use `--limit N` for longer text reports or `--format json` for complete data.
+See [memory adapters](PROVIDERS.md#memory-adapters) for reading and reviewed writes.
 
 ## Documentation
 

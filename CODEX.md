@@ -75,7 +75,7 @@ This is an agent workflow gate, not an OS security boundary.
 | Dedupe, contradiction checks, size/scope organization | Native reflect skill plus entries/contradictions helpers |
 | Skill discovery and improvement routing | Native SKILL.md workflows; per-record skill context; project/global assignment |
 | Memory hierarchy and referenced docs | AGENTS.md, existing AGENTS.override.md, scoped instructions, skills, bounded Markdown links |
-| Low-confidence auto-memory / promotion | Approved plugin-owned staging; no automatic writes to Codex-managed memories |
+| Native memory / promotion | Read consolidated memory and native notes; reviewed changes create native ad-hoc notes, never rewrite generated memory |
 
 Claude's `.claude/rules/*.md`, `CLAUDE.local.md`, and command Markdown are not Codex
 formats. Use scoped AGENTS.md or skills instead. Codex `.rules` files are execution
@@ -93,12 +93,21 @@ disables all capture/reminders; `CODEX_REFLECT_REMINDER=false` disables the star
 reminder only. Hooks never call a model or write active guidance.
 
 ```bash
-python3 plugins/codex-reflect/scripts/reflect.py paths --project "$PWD"
-python3 plugins/codex-reflect/scripts/reflect.py queue --project "$PWD"
-python3 plugins/codex-reflect/scripts/reflect.py targets --project "$PWD"
-python3 plugins/codex-reflect/scripts/reflect.py scan --project "$PWD" --days 30 --include-tool-errors
-python3 plugins/codex-reflect/scripts/reflect.py compare --project "$PWD" --days 14
+python3 tools/reflect.py status
+python3 tools/reflect.py memory
+python3 tools/reflect.py queue --format text
+python3 tools/reflect.py targets --format text
+python3 tools/reflect.py scan --days 30 --include-tool-errors --format text
+python3 tools/reflect.py compare --days 14 --format text
 ```
+
+The checkout launcher preserves your working directory; use its absolute path
+from another project or pass `--project PATH`. Installed runtimes provide the
+same commands through `reflect`. Text output groups skills and bounds rows with
+`--limit N` (default 20); `--format json` returns complete data. `status` avoids
+session-history enumeration; `paths` still lists session files when needed.
+See [memory adapters](PROVIDERS.md#memory-adapters) for versioned memory roots,
+native note creation, and exact reviewed change plans.
 
 Scan and queue inspection do not mutate data. `compare` and `--semantic` run Codex
 and can incur model usage; failures are explicitly marked unavailable. Queue

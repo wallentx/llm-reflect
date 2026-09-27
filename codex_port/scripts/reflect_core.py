@@ -11,6 +11,7 @@ import tempfile
 import time
 import uuid
 
+import memory_adapters
 from vendor import reflect_utils as upstream
 import providers
 
@@ -354,7 +355,12 @@ def scan(project=None, all_projects=False, days=30, corrections_only=False, incl
     return rows
 
 
-def targets(project=None, max_depth=3, max_nodes=100):
+def claude_memory_directory(project=None):
+    """Compatibility entry point; the Claude memory adapter owns path resolution."""
+    return memory_adapters.claude_directory(project)
+
+
+def targets(project=None, max_depth=3, max_nodes=100, memory_dirs=None):
     """Discover provider guidance and skills, plus bounded referenced Markdown."""
     root = project_path(project)
     home = providers.provider_home()
@@ -383,6 +389,9 @@ def targets(project=None, max_depth=3, max_nodes=100):
             add(override, kind)
         if normal.is_file() or kind in ("global", "root"):
             add(normal, kind, active=not has_override)
+        if name == "claude" and (directory / "AGENTS.md").is_file():
+            # Actual loading depends on Claude version and instruction-file settings.
+            add(directory / "AGENTS.md", "cross-agent", active=False, loading="conditional")
 
     # Cursor's user rules live in its UI, not ~/.cursor/AGENTS.md.
     if name == "copilot":
@@ -415,12 +424,22 @@ def targets(project=None, max_depth=3, max_nodes=100):
         for directory in (root / ".github/instructions", home / "instructions"):
             for path in sorted(directory.rglob("*.instructions.md")):
                 add(path, "rule")
+    for item in memory_adapters.discover(root, memory_dirs):
+        path = Path(item["path"])
+        if path.resolve() in seen:
+            # Keep guidance precedence/type while adding native memory capabilities.
+            existing = next(row for row in found if row["path"] == str(path.resolve()))
+            existing.update({key: item[key] for key in ("memory", "scope", "writable", "provider")})
+            continue
+        allowed.append(path.parent.resolve())
+        add(path, item["type"], active=item["type"] == "instruction-memory",
+            **{key: value for key, value in item.items() if key not in ("path", "type", "active", "exists")})
     for path in sorted((project_state(project) / "staging").glob("*.md")):
         # Staging is not automatically loaded as instructions by Codex.
         if state_home() not in allowed:
             allowed.append(state_home())
         add(path, "staging", active=False)
-    pending = deque((Path(f["path"]), 0) for f in found if f["exists"] and f["type"] != "staging")
+    pending = deque((Path(f["path"]), 0) for f in found if f["exists"] and f["type"] not in ("staging", "memory-draft"))
     count = 0
     while pending and count < max_nodes:
         source, depth = pending.popleft()
@@ -438,16 +457,18 @@ def targets(project=None, max_depth=3, max_nodes=100):
     return found
 
 
-def memory_entries(project=None):
+def memory_entries(project=None, memory_dirs=None, memory_only=False):
     rows = []
-    for target in targets(project):
-        if not target["exists"]:
+    for target in targets(project, memory_dirs=memory_dirs):
+        if not target["exists"] or target["type"] == "memory-draft" or (memory_only and not target.get("memory")):
             continue
         text = upstream._read_text_capped(Path(target["path"]))
         if text is None:
             continue
-        for number, line in enumerate(text.splitlines(), 1):
-            if line.strip().startswith("- "):
-                rows.append(dict(text=line.strip()[2:], source_file=target["path"],
-                                 source_type=target["type"], line_number=number))
+        entries = (memory_adapters.markdown_entries(text) if target.get("memory") else
+                   ((number, line.strip()[2:]) for number, line in enumerate(text.splitlines(), 1)
+                    if line.strip().startswith("- ")))
+        for number, entry in entries:
+            if entry:
+                rows.append(dict(text=entry, source_file=target["path"], source_type=target["type"], line_number=number))
     return rows

@@ -80,9 +80,25 @@ def main():
     capture_parser = commands.add_parser("capture", help="Capture a correction from stdin (no model call)")
     capture_parser.add_argument("--project", required=True)
     capture_parser.add_argument("--session-id", default="manual")
-    for action in ("paths", "queue", "targets", "entries", "clear", "scan", "compare", "contradictions"):
+    for action in ("status", "paths", "memory", "memory-plan", "memory-apply", "queue", "targets", "entries", "clear", "scan", "compare", "contradictions"):
         sub = commands.add_parser(action)
         sub.add_argument("--project", default=None)
+        sub.add_argument("--format", choices=("json", "text"), default="text" if action in ("status", "memory") else "json",
+                         help="Output format; existing data commands default to JSON")
+        sub.add_argument("--limit", type=int, default=20, help="Maximum displayed rows in text output (JSON is complete)")
+        if action in ("status", "memory", "targets", "entries"):
+            sub.add_argument("--memory-dir", action="append", help="Read an explicit memory directory/saved copy (repeatable)")
+        if action == "memory":
+            sub.add_argument("--all-providers", action="store_true", help="Show adapter capabilities without reading other providers' memories")
+        if action == "entries":
+            sub.add_argument("--memory-only", action="store_true", help="Only read native memory/instruction sources; exclude skills and pending drafts")
+        if action == "memory-plan":
+            sub.add_argument("--content", required=True, help="UTF-8 file containing the exact proposed memory content, or - for stdin")
+            sub.add_argument("--scope", choices=("private", "project", "global"))
+            sub.add_argument("--filename", help="Codex ad-hoc note filename; other destinations use their native index/instruction file")
+        if action == "memory-apply":
+            sub.add_argument("--plan", required=True, help="Reviewed memory-plan JSON file")
+            sub.add_argument("--approval", required=True, help="SHA-256 identifying the exact plan approved by the user")
         if action == "clear":
             choose = sub.add_mutually_exclusive_group(required=True)
             choose.add_argument("--all", action="store_true", help="Explicitly discard every pending item")
@@ -117,18 +133,46 @@ def main():
             print("[reflect] Hook failed ({}); queue was not intentionally cleared.".format(type(exc).__name__), file=sys.stderr)
         return 0
     project = args.project
+    if args.limit < 1:
+        parser.error("--limit must be positive")
     if (getattr(args, "semantic", False) or args.action == "compare") and providers.current() != "codex":
         parser.error("This provider uses reasoning in the current conversation; subprocess semantic analysis is Codex-only")
-    if args.action == "paths":
+    if args.action == "status":
+        from reports import status
+        data = status(project, args.memory_dir)
+    elif args.action == "memory":
+        import memory_adapters
+        data = ({"adapters": [memory_adapters.details(name) for name in sorted(providers.PROVIDERS)]}
+                if args.all_providers else memory_adapters.inspect(project, args.memory_dir))
+    elif args.action == "memory-plan":
+        from memory_changes import prepare
+        if args.content == "-":
+            content = sys.stdin.read(1024 * 1024 + 1)
+        else:
+            path = Path(args.content)
+            if path.stat().st_size > 1024 * 1024:
+                parser.error("Memory content exceeds 1 MiB")
+            content = path.read_text(encoding="utf-8")
+        data = prepare(content, project, args.scope, args.filename)
+    elif args.action == "memory-apply":
+        from memory_changes import apply
+        path = Path(args.plan)
+        if path.stat().st_size > 4 * 1024 * 1024:
+            parser.error("Memory plan exceeds 4 MiB")
+        plan = json.loads(path.read_text(encoding="utf-8"))
+        if not isinstance(plan, dict) or plan.get("project") != str(project_path(project)):
+            parser.error("Memory plan project differs from cwd/--project")
+        data = apply(plan, args.approval)
+    elif args.action == "paths":
         data = {"project": str(project_path(project)), "codex_home": str(codex_home()),
                 "state_dir": str(project_state(project)), "queue": str(queue_path(project)),
                 "session_files": [str(p) for p in session_files(project)],
                 "staging": str(project_state(project) / "staging"),
                 "audit": str(project_state(project) / "audit"), "provider": providers.details()}
     elif args.action == "targets":
-        data = targets(project)
+        data = targets(project, memory_dirs=args.memory_dir)
     elif args.action == "entries":
-        data = memory_entries(project)
+        data = memory_entries(project, args.memory_dir, args.memory_only)
     elif args.action == "clear":
         data = {"removed": discard(project, set(args.ids) if args.ids else None)}
     elif args.action == "queue":
@@ -152,7 +196,11 @@ def main():
             from semantic import semantic_analyze
             for row in data:
                 row["semantic"] = semantic_analyze(row["message"], model=args.model)
-    print(json.dumps(data, ensure_ascii=False, indent=2))
+    if args.format == "text":
+        from reports import render
+        print(render(args.action, data, project, args.limit))
+    else:
+        print(json.dumps(data, ensure_ascii=False, indent=2))
     return 0
 
 

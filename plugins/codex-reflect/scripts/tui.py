@@ -141,6 +141,14 @@ class Terminal:
                 "q": "cancel", "j": "down", "k": "up"}.get(char, char.lower())
 
 
+class UpdateSelection(list):
+    """Checked rows submitted with the update key rather than Enter."""
+
+
+class ProviderChanges(tuple):
+    updating = False
+
+
 def checklist(terminal, rows, selected, removing=False, changed=None):
     checked = set(selected)
     changed = set() if changed is None else changed
@@ -156,7 +164,8 @@ def checklist(terminal, rows, selected, removing=False, changed=None):
         start = max(0, min(focus - visible + 1, len(rows) - visible))
         lines = [Line(("title", "LLM Reflect | " + ("Uninstall providers" if removing else "Manage providers"))),
                  "", Line(("muted", "Up/Down: move  Space: toggle")),
-                 Line(("muted", "Enter: review  Esc/q: cancel")), ""]
+                 Line(("muted", "Enter: review  Esc/q: cancel" if removing else
+                       "u: update checked  Enter: review  Esc/q: cancel")), ""]
         for index in range(start, min(len(rows), start + visible)):
             row = rows[index]
             focused = index == focus
@@ -190,6 +199,8 @@ def checklist(terminal, rows, selected, removing=False, changed=None):
             return None
         if key == "enter":
             return [row["id"] for row in rows if row["id"] in checked]
+        if key == "u" and not removing:
+            return UpdateSelection(row["id"] for row in rows if row["id"] in checked)
         if key == "toggle":
             name = rows[focus]["id"]
             changed.add(name)
@@ -203,15 +214,17 @@ def checklist(terminal, rows, selected, removing=False, changed=None):
             focus = 0 if key == "home" else len(rows) - 1
 
 
-def confirm(terminal, installing, removing, upstream=False):
+def confirm(terminal, installing, removing, upstream=False, updating=False):
     apply = False
     while True:
         width, height = terminal.size()
         lines = [Line(("title", "LLM Reflect | Review changes")), ""]
-        for role, label, names in (("selected", "Install/update: ", installing), ("warning", "Remove: ", removing)):
+        for role, label, names in (("selected", "Update: " if updating else "Install/update: ", installing),
+                                   ("warning", "Remove: ", removing)):
             lines.extend(Line((role if names else "muted", text)) for text in
                          textwrap.wrap(label + (", ".join(names) or "none"), max(1, width - 1)))
-        retained = "Upstream data retained; queues are not migrated." if upstream else "Queues/settings are retained."
+        retained = ("Unchecked providers, queues and settings stay installed." if updating else
+                    "Upstream data retained; queues are not migrated." if upstream else "Queues/settings are retained.")
         lines.append("")
         lines.extend(Line(("muted", text)) for text in textwrap.wrap(retained, max(1, width - 1)))
         lines.extend(["",
@@ -250,28 +263,36 @@ def choose_providers(rows, installed, removing=False, dry_run=False):
             if chosen is None:
                 return None
             selected = chosen
+            updating = isinstance(chosen, UpdateSelection)
             # An untouched upstream row keeps its original integration.
-            add = [] if removing else [name for name in chosen
-                                       if not installed.get(name, {}).get("upstream") or name in changed]
-            remove = chosen if removing else [name for name in installed if name not in chosen]
+            if updating:
+                add = [name for name in chosen if installed.get(name, {}).get("method") in ("local", "marketplace")]
+                remove = []
+            else:
+                add = [] if removing else [name for name in chosen
+                                           if not installed.get(name, {}).get("upstream") or name in changed]
+                remove = chosen if removing else [name for name in installed if name not in chosen]
+            result = ProviderChanges((add, remove))
+            result.updating = updating
             if not add and not remove:
-                return [], []
+                return result
             if dry_run:
-                return add, remove
+                return result
             installing_labels = [name + " (LLM Reflect)" if installed.get(name, {}).get("upstream") else name
                                  for name in add]
             removing_labels = []
             for name in remove:
                 if installed[name].get("method") != "upstream":
                     removing_labels.append(name + " (LLM Reflect)" if installed[name].get("upstream") else name)
-            for name in dict.fromkeys(add + remove):
+            for name in ([] if updating else dict.fromkeys(add + remove)):
                 for entry in installed.get(name, {}).get("upstream", []):
                     label = entry["plugin"] + " (" + entry["scope"] + ")"
                     if label not in removing_labels:
                         removing_labels.append(label)
             decision = confirm(terminal, installing_labels, removing_labels,
-                               upstream=any(installed.get(name, {}).get("upstream") for name in add + remove))
+                               upstream=any(installed.get(name, {}).get("upstream") for name in add + remove),
+                               updating=updating)
             if decision is None:
                 return None
             if decision:
-                return add, remove
+                return result

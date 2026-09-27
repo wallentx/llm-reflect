@@ -9,13 +9,15 @@ Read [the reviewed learning workflow](../../references/review-workflow.md).
 Use semantic reasoning to find repeated intent across different phrasings and
 languages, not just keyword counts. Support `--days N` (default 14),
 `--project <path>`, `--all-projects`, `--history FILE`, and `--dry-run`.
-Read `paths` first. When native history is unavailable, request an explicit
+Read `status` first. When native history is unavailable, request an explicit
 normalized JSONL export and pass `--history FILE`; do not substitute another
 provider's history.
 
 1. Resolve the bundled CLI. Run `scan --project <project> --days N`, or explicitly
    add `--all-projects` when requested. Also run `targets` for each candidate
-   project to discover existing skills. Preserve project and session identity;
+   project to discover existing skills. Use complete JSON for analysis; use
+   `scan --format text` for a bounded report with project/session counts, without
+   inline Python. Preserve project and session identity;
    unrelated projects with the same folder name must never be merged.
 2. Identify workflows repeated in at least two independent sessions. Group
    equivalent intent, inputs, sequence, outputs, and recurring corrections.
@@ -32,6 +34,6 @@ provider's history.
    `--dry-run` stops at a read-only proposal. Do not create draft skill files in
    auto-loaded directories before approval.
 5. The approved implementer writes to the selected provider's project or global
-   skill directory returned by `paths`, validates frontmatter, resource paths,
+   skill directory returned by `status --format json`, validates frontmatter, resource paths,
    and helper tests, then records the audit outcome. Report the provider-native
    invocation. Never modify installed plugin caches; use the owning source.

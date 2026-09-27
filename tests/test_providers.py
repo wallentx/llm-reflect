@@ -27,6 +27,7 @@ class ProviderTests(unittest.TestCase):
         self.project.mkdir()
         values = {"HOME": str(self.home), "USERPROFILE": str(self.home),
                   "CODEX_HOME": str(self.home / ".codex"), "CLAUDE_CONFIG_DIR": str(self.home / ".claude"),
+                  "COPILOT_HOME": str(self.home / ".copilot"), "SANDBOX": "", "CLAUDE_CODE_PROJECT_DIR_NAME": "",
                   "XDG_CONFIG_HOME": str(self.home / ".config"), "XDG_STATE_HOME": str(self.home / ".local/state"),
                   "CODEX_REFLECT_HOME": str(self.home / ".codex/reflect"), "REFLECT_PROVIDER": "codex",
                   "REFLECT_HOME": str(self.home / "state"), "REFLECT_DISABLED": "0", "REFLECT_REMINDER": "true"}
@@ -40,7 +41,7 @@ class ProviderTests(unittest.TestCase):
         return subprocess.run([sys.executable, str(script or PACKAGE / "scripts/reflect.py"),
                                "--provider", provider, *args],
                               input=json.dumps(data) if data is not None else text,
-                              text=True, capture_output=True, cwd=str(self.project))
+                              text=True, encoding="utf-8", capture_output=True, cwd=str(self.project))
 
     def init(self, *args):
         return self.cli("codex", "init", *args)

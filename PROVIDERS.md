@@ -63,6 +63,35 @@ for other providers. `--method marketplace` rejects providers without a packaged
 marketplace adapter. Both methods keep the agent's hook trust controls intact;
 restart the agent and review its hook trust prompt after installation.
 
+## Update
+
+```sh
+sh ./install.sh -u
+reflect init -u
+reflect init -u --provider gemini --provider cursor
+```
+
+Updates fast-forward the checkout's current branch from its configured upstream,
+refresh the standalone runtime, and update installed integrations using their
+existing method. Custom installation prefixes are retained by `reflect init -u`.
+Codex refreshes its configured Git marketplace and plugin cache, or reinstalls
+from a local marketplace; Claude refreshes its marketplace and updates its plugin.
+Local integrations get the current skills, hook bindings, and OpenCode adapter.
+Disabled local Codex plugins stay disabled and refresh their cache on restart.
+Restart your agent after updates.
+
+Press `u` in the setup picker to update checked, already-installed LLM Reflect
+providers. Unchecked providers stay installed; checked providers without an
+LLM Reflect install and upstream-only `claude-reflect` rows are skipped.
+The review screen shows updates without removals. Existing queues, memories,
+upstream installs, and unrelated settings remain intact.
+
+Use `--dry-run` to preview without fetching, writing, or running marketplace
+commands. Dirty checkouts stop before pulling; `--no-pull` refreshes from the
+current checkout instead. Updates never switch branches, stash edits, or reset
+history. `install.sh -u --no-configure` refreshes only the standalone command.
+On Windows, use `python tools/install.py -u`.
+
 ## Capabilities
 
 | Provider ID | Automatic capture | History scan | Installation |
@@ -77,6 +106,10 @@ restart the agent and review its hook trust prompt after installation.
 
 All providers get `reflect`, `reflect-skills`, `view-queue`, and `skip-reflect`
 skills, queue inspection, selective discard with backups, and guidance discovery.
+Claude discovery includes native auto-memory and AGENTS.md alongside CLAUDE.md.
+AGENTS.md is marked conditional because its loading depends on Claude's version
+and settings. Memory adapters keep each provider's native storage and write
+mechanism separate.
 Discovery and reflection still work from the queue or current conversation when
 native historical scanning is unavailable. Workflow discovery across older
 sessions requires native history or an explicit export; Reflect does not parse
@@ -87,6 +120,77 @@ supports the optional `compare`/`--semantic` subprocess helpers. Other adapters
 reject those flags rather than invoking Codex or another model behind the scenes.
 Independent audit/review agents and explicit approval remain required to apply
 learning proposals. Providers without independent agents remain proposal-only.
+
+## Memory adapters
+
+| Provider | Read sources | Reviewed writes |
+|---|---|---|
+| Codex | Consolidated `MEMORY.md`, `memory_summary.md`, native ad-hoc notes; respects memory version | New timestamped notes in `extensions/ad_hoc/notes/`; generated memory stays untouched |
+| Claude | Repository auto-memory and configured `autoMemoryDirectory` | Private `MEMORY.md`, project/global `CLAUDE.md` |
+| Gemini | Private `MEMORY.md`/topics, legacy private `GEMINI.md`, global/project `GEMINI.md`; registry and SHA-256 paths | Private memory index or project/global `GEMINI.md` |
+| Cursor | Native tool access in the relevant Cursor surface, or an explicit saved Markdown copy | Native memory tools in that surface; no local CLI remote-store access |
+| Copilot | Native Copilot memory tools, or an explicit saved Markdown copy | Native memory tool in the current Copilot session; no local CLI remote-store access |
+| Antigravity CLI | `AGENTS.md`/`GEMINI.md`, `.agents/rules`, global rule files | Project/global `GEMINI.md`; knowledge-item storage is not guessed |
+| OpenCode | Project/global `AGENTS.md` | Project/global `AGENTS.md`; third-party memory plugins require another adapter |
+
+Inspect memory without writing or invoking a model:
+
+```sh
+reflect memory --all-providers
+reflect --provider gemini memory --project "$PWD"
+reflect --provider codex entries --memory-only --format text
+reflect --provider cursor memory --memory-dir ./saved-memory
+```
+
+`--memory-dir DIR` reads an explicitly chosen directory of Markdown copies and
+never makes those copies writable. It replaces default native memory discovery
+for that invocation. Instruction sources are still included. Gemini inbox
+patches and unpromoted skills are reported as pending drafts and excluded from
+memory entries. Raw Codex memory extractions and rollout transcripts are excluded.
+Gemini storage is discovered from `projects.json`, `.project_root` ownership
+markers, or legacy canonical-path hashes; discovery never initializes or migrates it.
+
+Claude honors `CLAUDE_CONFIG_DIR`, `CLAUDE_CODE_PROJECT_DIR_NAME`, and user/project
+memory-directory settings. User settings may select an external memory directory;
+an external path supplied by repository settings requires explicit `--memory-dir`.
+The default memory directory is shared across repository worktrees. `COPILOT_HOME`
+overrides Copilot's configuration and instruction directory.
+
+Prepare an exact change after screening its content, then review its diff:
+
+```sh
+reflect --provider claude memory-plan --scope private --content reviewed-memory.md > memory-plan.json
+```
+
+After independent review and explicit user approval, apply that exact plan:
+
+```sh
+reflect --provider claude memory-apply --plan memory-plan.json --approval APPROVED_PLAN_SHA256
+```
+
+Use the `approval` value from the reviewed JSON; do not automatically pipe it
+into application. `--project PATH` must match the plan's project. Plans bind
+the provider, destination, diff, content, and current file hash. Application
+rejects stale/changed plans and symlink destinations, saves a rollback copy,
+and leaves the Reflect queue alone. Codex accepts `--scope global` and an optional
+`--filename YYYY-MM-DDTHH-MM-SS-slug.md`; it only creates a new native note.
+Other file adapters support project/global scope; Claude and Gemini also support
+private memory. Inspection and plan creation do not write memory or state.
+
+Cursor/Copilot plans return `requires-native-tool`; the CLI cannot apply them.
+The skill must read existing memory with native tools, prepare and independently
+review the exact change, then use those tools after user approval. If the current
+provider surface exposes no memory tools, leave it as a proposal. An unavailable
+native memory store is never reported as an empty store or replaced with fake files.
+
+Sources: [Claude memory](https://code.claude.com/docs/en/memory),
+[Gemini Auto Memory](https://geminicli.com/docs/cli/auto-memory/),
+[Gemini storage](https://github.com/google-gemini/gemini-cli/blob/main/packages/core/src/config/storage.ts),
+[Codex memory tools](https://github.com/openai/codex/tree/main/codex-rs/ext/memories),
+[Cursor automation memories](https://cursor.com/docs/cloud-agent/automations#memories),
+[Copilot Memory](https://docs.github.com/en/copilot/concepts/agents/copilot-memory),
+[Antigravity rules](https://www.antigravity.google/docs/rules/),
+[OpenCode rules](https://opencode.ai/docs/rules/).
 
 ## Native installation locations
 
@@ -150,12 +254,20 @@ canonical path keys. Installation never migrates or clears existing queues.
 The original Claude plugin's queue is not silently migrated to the new adapter.
 
 ```sh
-reflect --provider gemini paths --project "$PWD"
-reflect --provider gemini queue --project "$PWD"
+reflect --provider gemini status --project "$PWD"
+reflect --provider gemini queue --project "$PWD" --format text
 printf '%s\n' 'remember: run focused tests before deployment' |
   reflect --provider antigravity capture --project "$PWD" --session-id manual-example
-reflect --provider cursor scan --project "$PWD" --history ./history.jsonl --days 30
+reflect --provider cursor scan --project "$PWD" --history ./history.jsonl --days 30 --format text
 ```
+
+From a checkout, use `python3 tools/reflect.py` in place of `reflect`; the launcher
+preserves the current project. `status` provides context and target/queue totals
+without listing history. `targets --format text` groups skill files
+by directory. `queue`, `entries`, `scan`, `compare`, and `contradictions` also
+support `--format text`. `--limit N` bounds text rows (default 20); `--format json`
+keeps complete results for processing. Legacy JSON defaults remain unchanged.
+Memory adapter capabilities and limitations are reported by `memory` and `status`.
 
 The normalized JSONL import is an explicit interchange format, not a claim that
 provider exports already match it. Each record requires these string fields:

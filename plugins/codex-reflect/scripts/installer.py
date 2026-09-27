@@ -14,6 +14,7 @@ import uuid
 import providers
 
 PACKAGE = Path(__file__).resolve().parents[1]
+TEMPLATES = PACKAGE
 SKILLS = ("reflect", "reflect-skills", "view-queue", "skip-reflect")
 
 
@@ -94,7 +95,7 @@ export const ReflectPlugin = async ({ directory }) => ({
 
 
 def skill_bytes(name, skill):
-    source = (PACKAGE / "skills" / skill / "SKILL.md").read_text(encoding="utf-8")
+    source = (TEMPLATES / "skills" / skill / "SKILL.md").read_text(encoding="utf-8")
     runtime = PACKAGE / "scripts/reflect.py"
     workflow = providers.skill_home(name) / "reflect/references/review-workflow.md"
     source = source.replace("(../../references/review-workflow.md)", "(<" + workflow.as_posix() + ">)")
@@ -201,7 +202,7 @@ def local_plan(name, previous, remove=False):
     else:
         for skill in SKILLS:
             file_plan(providers.skill_home(name) / skill / "SKILL.md", skill_bytes(name, skill), old_files, writes, owned)
-        workflow = (PACKAGE / "references/review-workflow.md").read_bytes()
+        workflow = (TEMPLATES / "references/review-workflow.md").read_bytes()
         file_plan(providers.skill_home(name) / "reflect/references/review-workflow.md", workflow, old_files, writes, owned)
         if name == "opencode":
             file_plan(providers.provider_home(name) / "plugins/reflect.js", opencode_plugin(), old_files, writes, owned)
@@ -233,22 +234,45 @@ def add_init_parser(commands):
         parser.set_defaults(remove=action == "uninstall")
         if action == "init":
             parser.add_argument("--remove", action="store_true", help="Open the uninstall picker or remove named integrations")
+            parser.add_argument("-u", "--update", action="store_true", help="Update installed providers without opening the picker")
+            parser.add_argument("--no-pull", action="store_true", help="Use the current checkout when updating")
+            parser.add_argument("--refresh-only", action="store_true", help=argparse.SUPPRESS)
 
 
 def source_root():
+    if TEMPLATES != PACKAGE:
+        # Bootstrap previews read new templates before copying source.json.
+        return TEMPLATES.parents[1]
     metadata = PACKAGE / "source.json"
-    return Path(read_json(metadata)["checkout"]) if metadata.exists() else PACKAGE.parents[1]
+    return Path(read_json(metadata)["checkout"]) if metadata.exists() else TEMPLATES.parents[1]
 
 
-def marketplace_commands(name, remove, installed=False):
+def marketplace_commands(name, remove, installed=False, updating=False):
     if not providers.PROVIDERS[name]["marketplace"]:
         raise ValueError("No marketplace installer for " + name + "; use --method local")
     if name == "codex":
         plugin = "codex-reflect@codex-reflect-marketplace"
+        if updating:
+            import tomllib
+            config = providers.provider_home(name) / "config.toml"
+            data = tomllib.loads(config.read_text(encoding="utf-8")) if config.exists() else {}
+            source = data.get("marketplaces", {}).get("codex-reflect-marketplace", {})
+            if source.get("source_type") == "git":
+                # Native upgrade refreshes installed caches and preserves enablement.
+                return [["codex", "plugin", "marketplace", "upgrade", "codex-reflect-marketplace"]]
+            if data.get("plugins", {}).get(plugin, {}).get("enabled") is False:
+                # `plugin add` enables plugins. Keep the user's disabled setting;
+                # Codex refreshes local marketplace caches on the next restart.
+                print("codex: local marketplace plugin remains disabled; its cache refreshes on restart.")
+                return []
+            return [["codex", "plugin", "add", plugin]]
         return [["codex", "plugin", "remove", plugin]] if remove else [
             ["codex", "plugin", "marketplace", "add", str(source_root())],
             ["codex", "plugin", "add", plugin]]
     plugin = "reflect@reflect-marketplace"
+    if updating:
+        return [["claude", "plugin", "marketplace", "update", "reflect-marketplace"],
+                ["claude", "plugin", "update", plugin, "--scope", "user"]]
     return [["claude", "plugin", "uninstall", plugin, "--scope", "user"]] if remove else [
         ["claude", "plugin", "marketplace", "add", str(source_root())],
         ["claude", "plugin", "update" if installed else "install", plugin, "--scope", "user"]]
@@ -355,6 +379,13 @@ def provider_rows(installed, removing=False):
 
 def initialize(args):
     _, installed = installation_state()
+    updating = getattr(args, "update", False) or getattr(args, "refresh_only", False)
+    if updating and (args.remove or args.method != "auto" or args.list):
+        raise ValueError("Updates keep existing installation methods; do not combine --update with --remove, --method or --list")
+    if updating and not getattr(args, "refresh_only", False):
+        selected = update_providers(installed, args.selected)
+        from updater import run_update
+        return run_update(selected, args.dry_run, getattr(args, "no_pull", False))
     if args.list:
         print("PROVIDER     DETECTED  INSTALLED    CAPTURE  HISTORY  MARKETPLACE")
         for name, spec in providers.PROVIDERS.items():
@@ -366,7 +397,9 @@ def initialize(args):
                 "manual" if name == "antigravity" else "hook", spec["history"],
                 "yes" if spec["marketplace"] else "no"))
         return 0
-    if args.selected:
+    if updating:
+        actions = [(name, False) for name in update_providers(installed, args.selected)]
+    elif args.selected:
         actions = [(name, args.remove) for name in dict.fromkeys(args.selected)]
     else:
         from tui import choose_providers
@@ -382,9 +415,17 @@ def initialize(args):
             print("Cancelled; no provider changes made.")
             return 0
         add, remove = chosen
+        if getattr(chosen, "updating", False):
+            if not add:
+                print("No installed LLM Reflect providers selected for update.")
+                return 0
+            if installation_state()[1] != installed:
+                raise RuntimeError("Provider installations changed while selecting; rerun the picker")
+            from updater import run_update
+            return run_update(add, args.dry_run, getattr(args, "no_pull", False))
         actions = [(name, False) for name in add] + [(name, True) for name in remove]
     if not actions:
-        print("No provider changes selected.")
+        print("No installed LLM Reflect providers to update." if updating else "No provider changes selected.")
         return 0
     if any(name not in providers.PROVIDERS for name, _ in actions):
         raise ValueError("Unknown provider selection")
@@ -407,12 +448,22 @@ def initialize(args):
         lock.unlink()
 
 
+def update_providers(installed, selected=None):
+    names = list(dict.fromkeys(selected)) if selected else [
+        name for name in providers.PROVIDERS if installed.get(name, {}).get("method") in ("local", "marketplace")]
+    for name in names:
+        if installed.get(name, {}).get("method") not in ("local", "marketplace"):
+            raise ValueError("No installed LLM Reflect integration to update for " + name + "; run init --provider " + name + " first")
+    return names
+
+
 def initialize_locked(args, actions, expected):
     registry, current = installation_state()
     if current != expected:
         raise RuntimeError("Provider installations changed while selecting; rerun the picker")
     installed = registry.setdefault("providers", {})
     writes, commands = {}, []
+    updating = getattr(args, "refresh_only", False)
     for name, remove in actions:
         previous = current.get(name, {})
         upstream = previous.get("upstream", [])
@@ -439,10 +490,10 @@ def initialize_locked(args, actions, expected):
         else:
             if not remove and not (source_root() / ".agents/plugins/marketplace.json").is_file():
                 raise ValueError("Marketplace installation needs the original Reflect checkout")
-            planned = marketplace_commands(name, remove, bool(previous_method))
+            planned = marketplace_commands(name, remove, bool(previous_method), updating=updating)
             commands.extend((name, command) for command in planned)
             entry = {"method": method}
-        if upstream:
+        if upstream and not updating:
             # A failed native replacement install leaves upstream registered.
             commands.extend((name, command) for command in upstream_uninstall_commands(upstream))
             print("claude: upstream data is retained; its queues are not migrated to LLM Reflect.")
@@ -479,5 +530,6 @@ def initialize_locked(args, actions, expected):
         if result.returncode:
             raise RuntimeError(name + " marketplace command failed; earlier CLI operations may have succeeded. Rerun init to reconcile.")
     apply_writes(writes)
-    print("Provider setup complete. Restart selected providers and review hook trust prompts.")
+    print("Provider update complete. Restart selected providers." if updating else
+          "Provider setup complete. Restart selected providers and review hook trust prompts.")
     return 0

@@ -355,6 +355,10 @@ class PickerTests(unittest.TestCase):
         self.run_terminal(cancel=True)
 
     @unittest.skipIf(os.name == "nt", "POSIX pseudo-terminals are unavailable on Windows")
+    def test_real_terminal_u_reviews_updates_and_cancels_without_writing(self):
+        self.run_terminal(cancel=True, update=True)
+
+    @unittest.skipIf(os.name == "nt", "POSIX pseudo-terminals are unavailable on Windows")
     def test_checkout_installer_opens_picker_after_copying_standalone_runtime(self):
         self.run_terminal(cancel=True, bootstrap=True)
 
@@ -362,7 +366,7 @@ class PickerTests(unittest.TestCase):
     def test_real_terminal_shows_orange_upstream_marker_without_changing_install(self):
         self.run_terminal(cancel=True, upstream=True)
 
-    def run_terminal(self, cancel, bootstrap=False, upstream=False):
+    def run_terminal(self, cancel, bootstrap=False, upstream=False, update=False):
         import pty
         import termios
         master, slave = pty.openpty()
@@ -371,6 +375,8 @@ class PickerTests(unittest.TestCase):
         attributes = termios.tcgetattr(slave)
         if upstream:
             self.upstream()
+        if update:
+            self.assertEqual(self.init("--provider", "gemini").returncode, 0)
         before = self.snapshot()
         prefix = self.home / "prefix"
         command = (["sh", str(fixtures.ROOT / "install.sh"), "--prefix", str(prefix)] if bootstrap else
@@ -400,6 +406,11 @@ class PickerTests(unittest.TestCase):
             read_until((tui.UPSTREAM_MARKER + " Upstream claude-reflect.").encode("utf-8"))
             self.assertIn((tui.STYLES["upstream"] + tui.UPSTREAM_MARKER).encode("utf-8"), output)
         if cancel:
+            if update:
+                os.write(master, b"u")
+                read_until(b"Review changes")
+                read_until(b"Update: gemini")
+                read_until(b"Remove: none")
             os.write(master, b"\x03")
         else:
             os.write(master, b"\x1b[B\x1b[B \r")
