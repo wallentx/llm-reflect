@@ -1,5 +1,7 @@
 # llm-reflect
 
+<img width="1344" height="1169" alt="28678" src="https://github.com/user-attachments/assets/9ed4502c-3481-43f5-b58f-c602aaefdf9b" />
+
 Turn corrections to your coding agent into better instructions, native memories,
 and reusable skills.
 
