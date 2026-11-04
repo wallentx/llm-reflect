@@ -103,7 +103,7 @@ On Windows, use `python tools/install.py -u`.
 | `claude` | Prompt, startup/commit reminders, compaction backup | Native primary-session JSONL | Claude marketplace or local skills/hooks |
 | `cursor` | Prompt, startup reminder, compaction backup | Explicit normalized JSONL import | Local skills/hooks |
 | `gemini` | BeforeAgent, startup reminder, compaction backup | Explicit normalized JSONL import | Local skills/hooks |
-| `opencode` | User chat messages through JavaScript plugin | Explicit normalized JSONL import | Local skills/plugin |
+| `opencode` | User chat messages through a v1 or v2 JavaScript plugin | Explicit normalized JSONL import | Local skills/plugin |
 | `copilot` | Prompt, startup reminder, compaction backup | Explicit normalized JSONL import | Local skills/hooks |
 | `antigravity` | Manual capture | Explicit normalized JSONL import | Local skills; CLI paths match Panoptes |
 
@@ -206,6 +206,11 @@ Sources: [Claude memory](https://code.claude.com/docs/en/memory),
 | OpenCode | `$XDG_CONFIG_HOME/opencode/skills` (default `~/.config/opencode/skills`) | Same config root, `plugins/reflect.js` |
 | Copilot | `~/.copilot/skills` | `~/.copilot/settings.json` |
 | Antigravity CLI | `~/.gemini/antigravity-cli/skills` | None |
+
+For OpenCode, the installer runs `opencode --version` and selects the v1 or v2
+plugin. If OpenCode is unavailable or its version cannot be recognized, install
+it first or set `REFLECT_OPENCODE_PLUGIN_API=v1` or `v2` for the installer.
+Re-run setup after changing OpenCode major versions so the plugin matches.
 
 Each installed skill binds its helper commands to its provider. Do not copy a
 bound skill between providers. Use the installer for each provider instead.

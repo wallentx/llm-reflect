@@ -69,42 +69,8 @@ def hook_entries(name):
     return result
 
 
-V2_STUB = '''// reflect:managed -- regenerate with reflect init --provider opencode
-// Inert placeholder. OpenCode v2 plugin definitions expose model, catalog,
-// command, integration, reference and skill hooks, but no turn-level message
-// content and no plugin-visible session stream. This default export satisfies
-// the v2 loader schema ({ id, setup }) and records nothing. Prompt capture
-// returns once OpenCode passes assembled request messages to plugins.
-export default {
-  id: "reflect",
-  setup(ctx) {
-    return ctx;
-  },
-};
-'''
-
-
-def reflect_wrote_v1_plugin(content):
-    """Recognize reflect's own v1 OpenCode module, tolerating install-location paths."""
-    try:
-        text = content.decode("utf-8")
-    except UnicodeDecodeError:
-        return False
-    return ("// reflect:managed -- regenerate with reflect init --provider opencode" in text
-            and "export const ReflectPlugin = async ({ directory }) => ({" in text
-            and '"chat.message"' in text
-            and "child.stdin.end(JSON.stringify({ cwd: directory, prompt," in text)
-
-
 def opencode_plugin_api():
-    """Report the plugin shape the installed OpenCode accepts: "v1" or "v2".
-
-    OpenCode decodes a plugin module's default export against { id, effect }
-    or { id, setup } and has no version branch. Ask the binary for its version
-    first; a build that reports 2 or later installs only that shape. Older
-    builds keep the established v1 write. If no binary is present, keep v1 so
-    an absent install is never silently changed.
-    """
+    """Choose the plugin API from OpenCode's reported major version."""
     override = os.environ.get("REFLECT_OPENCODE_PLUGIN_API", "").strip().lower()
     if override:
         if override not in ("v1", "v2"):
@@ -112,14 +78,16 @@ def opencode_plugin_api():
         return override
     executable = shutil.which("opencode")
     if not executable:
-        return "v1"
+        raise ValueError("Cannot detect OpenCode: executable not found; install it or set REFLECT_OPENCODE_PLUGIN_API to v1 or v2")
     try:
         result = subprocess.run([executable, "--version"], capture_output=True,
                                 text=True, timeout=10, check=False)
-    except (OSError, subprocess.SubprocessError):
-        return "v1"
-    match = re.search(r"(\d+)\.(\d+)", result.stdout)
-    return "v2" if match and int(match.group(1)) >= 2 else "v1"
+    except (OSError, subprocess.SubprocessError) as error:
+        raise ValueError("Cannot detect OpenCode plugin API; set REFLECT_OPENCODE_PLUGIN_API to v1 or v2") from error
+    match = re.fullmatch(r"(?:opencode\s+)?v?(\d+)\.\d+\.\d+(?:[-+][0-9A-Za-z.+-]+)?", result.stdout.strip(), re.IGNORECASE)
+    if result.returncode or not match or match.group(1) not in ("1", "2"):
+        raise ValueError("Cannot detect OpenCode plugin API from version; set REFLECT_OPENCODE_PLUGIN_API to v1 or v2")
+    return "v" + match.group(1)
 
 
 def opencode_plugin():
@@ -144,6 +112,33 @@ export const ReflectPlugin = async ({ directory }) => ({
     });
   }
 });
+'''.replace("PYTHON", json.dumps(sys.executable)).replace("ARGS", json.dumps([
+        str(PACKAGE / "scripts/reflect.py"), "--provider", "opencode", "hook", "UserPromptSubmit"])) ).encode()
+
+
+def opencode_v2_plugin():
+    # The v2 prompt hook has the original text, session and message IDs.
+    return ('''// reflect:managed -- regenerate with reflect init --provider opencode
+import { spawn } from "node:child_process";
+export default {
+  id: "reflect",
+  async setup(ctx) {
+    await ctx.session.hook("prompt", async event => {
+      const prompt = event?.prompt?.text;
+      if (typeof prompt !== "string" || !prompt) return;
+      try { await new Promise(resolve => {
+        const child = spawn(PYTHON, ARGS, { stdio: ["pipe", "ignore", "ignore"], shell: false });
+        const timer = setTimeout(() => { child.kill(); resolve(); }, 5000);
+        const done = () => { clearTimeout(timer); resolve(); };
+        child.on("error", done);
+        child.on("close", done);
+        child.stdin.on("error", done);
+        child.stdin.end(JSON.stringify({ cwd: ctx.location.directory, prompt,
+          session_id: event.sessionID, turn_id: event.messageID }));
+      }); } catch (_) { /* Capture must not block the user's prompt. */ }
+    });
+  },
+};
 '''.replace("PYTHON", json.dumps(sys.executable)).replace("ARGS", json.dumps([
         str(PACKAGE / "scripts/reflect.py"), "--provider", "opencode", "hook", "UserPromptSubmit"])) ).encode()
 
@@ -247,7 +242,7 @@ def apply_writes(writes, dry_run=False):
         raise
 
 
-def local_plan(name, previous, remove=False):
+def local_plan(name, previous, remove=False, opencode_api=None):
     writes, owned = {}, {}
     old_files = previous.get("files", {})
     if remove:
@@ -259,16 +254,19 @@ def local_plan(name, previous, remove=False):
         workflow = (TEMPLATES / "references/review-workflow.md").read_bytes()
         file_plan(providers.skill_home(name) / "reflect/references/review-workflow.md", workflow, old_files, writes, owned)
         if name == "opencode":
-            # The discovery glob is {plugin,plugins}/*.{ts,js} under the config
-            # directory. A v2 build rejects the v1 module shape, so writing it
-            # into plugins/ would only produce a load warning. Keep the v2 stub
-            # outside that glob so nothing is discovered until capture returns.
-            if opencode_plugin_api() == "v2":
-                file_plan(providers.provider_home(name) / "reflect/reflect.opencode-v2.js",
-                          V2_STUB.encode(), old_files, writes, owned)
-            else:
-                file_plan(providers.provider_home(name) / "plugins/reflect.js",
-                          opencode_plugin(), old_files, writes, owned)
+            api = opencode_api or opencode_plugin_api()
+            plugin = providers.provider_home(name) / "plugins/reflect.js"
+            stub = providers.provider_home(name) / "reflect/reflect.opencode-v2.js"
+            if str(stub) in old_files:
+                file_plan(stub, None, old_files, writes, owned)
+            known = old_files
+            if any(p.is_symlink() for p in (plugin, *plugin.parents)):
+                raise ValueError("Refusing symlink destination: " + str(plugin))
+            if str(plugin) not in known and plugin.exists() and plugin.read_bytes() == opencode_plugin():
+                # Recognize the exact legacy generated file without claiming edits.
+                known = {**known, str(plugin): digest(opencode_plugin())}
+            content = opencode_v2_plugin() if api == "v2" else opencode_plugin()
+            file_plan(plugin, content, known, writes, owned)
     spec = providers.PROVIDERS[name]
     hook_state = {}
     if spec["hooks_file"]:
@@ -554,7 +552,8 @@ def initialize_locked(args, actions, expected):
         elif method == "local":
             if not remove and installed_marketplace(name, include_upstream=not bool(upstream)):
                 raise ValueError("Marketplace Reflect is already registered for " + name + "; use --method marketplace")
-            plan, entry = local_plan(name, previous, remove)
+            opencode_api = opencode_plugin_api() if name == "opencode" and not remove else None
+            plan, entry = local_plan(name, previous, remove, opencode_api)
             writes.update(plan)
         else:
             if not remove and not (source_root() / ".agents/plugins/marketplace.json").is_file():
@@ -572,19 +571,8 @@ def initialize_locked(args, actions, expected):
             installed[name] = entry
         if name == "antigravity" and not remove:
             print("antigravity: skills + manual capture; no automatic hook adapter.")
-        if name == "opencode" and not remove and opencode_plugin_api() == "v2":
-            # A pre-existing v1 module in plugins/ still triggers the load warning.
-            # Remove it only when it carries reflect's managed header and v1 hook
-            # shape; the generated script path varies by install location.
-            stale = providers.provider_home(name) / "plugins/reflect.js"
-            if stale.exists() and reflect_wrote_v1_plugin(stale.read_bytes()):
-                file_plan(stale, None, {str(stale): digest(stale.read_bytes())}, writes, {})
-            elif stale.exists():
-                print("opencode: " + str(stale) + " is not reflect-managed; review and remove it "
-                      "to stop the v2 plugin load warning.")
-            print("opencode: installed OpenCode uses the v2 plugin schema, which exposes no "
-                  "per-turn message content. Prompt capture is unavailable until OpenCode "
-                  "passes request messages to plugins; queued review still works.")
+        if name == "opencode" and not remove:
+            print("opencode: installing the " + opencode_api + " prompt capture plugin.")
         if providers.PROVIDERS[name]["history"] == "import" and not remove:
             print(name + ": historical scan requires --history FILE; queue review works directly.")
     if not args.dry_run:
