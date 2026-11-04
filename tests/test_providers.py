@@ -160,14 +160,15 @@ class ProviderTests(unittest.TestCase):
         existing = {"security": {"auth": {"selectedType": "oauth-personal"}},
                     "hooks": {"BeforeAgent": [{"hooks": [{"type": "command", "command": "custom"}]}]}}
         config.write_text(json.dumps(existing), encoding="utf-8")
-        result = self.init("--provider", "gemini", "--provider", "opencode", "--provider", "gemini")
-        self.assertEqual(result.returncode, 0, result.stderr)
-        data = json.loads(config.read_text())
-        self.assertEqual(data["security"], existing["security"])
-        self.assertEqual(len(data["hooks"]["BeforeAgent"]), 2)
-        before = self.snapshot()
-        self.assertEqual(self.init("--provider", "gemini", "--provider", "opencode").returncode, 0)
-        self.assertEqual(self.snapshot(), before)
+        with patch.dict(os.environ, {"REFLECT_OPENCODE_PLUGIN_API": "v1"}):
+            result = self.init("--provider", "gemini", "--provider", "opencode", "--provider", "gemini")
+            self.assertEqual(result.returncode, 0, result.stderr)
+            data = json.loads(config.read_text())
+            self.assertEqual(data["security"], existing["security"])
+            self.assertEqual(len(data["hooks"]["BeforeAgent"]), 2)
+            before = self.snapshot()
+            self.assertEqual(self.init("--provider", "gemini", "--provider", "opencode").returncode, 0)
+            self.assertEqual(self.snapshot(), before)
         self.assertEqual(self.init("--provider", "gemini", "--remove").returncode, 0)
         self.assertEqual(json.loads(config.read_text()), existing)
         self.assertFalse((self.home / ".gemini/skills/reflect/SKILL.md").exists())
@@ -279,6 +280,52 @@ class ProviderTests(unittest.TestCase):
         queue = json.loads(self.cli("opencode", "queue").stdout)
         self.assertEqual([row["message"] for row in queue], [prompt])
         self.assertFalse((self.project / "unwanted-file").exists())
+
+    def test_opencode_v2_install_writes_no_discovered_plugin(self):
+        with patch.dict(os.environ, {"REFLECT_OPENCODE_PLUGIN_API": "v2"}):
+            result = self.init("--provider", "opencode")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        home = providers.provider_home("opencode")
+        # Nothing may match the runtime's {plugin,plugins}/*.{ts,js} discovery glob.
+        discovered = [p for directory in (home / "plugins", home / "plugin") for p in directory.glob("*")
+                      if p.is_file() and p.suffix in (".js", ".ts")]
+        self.assertEqual(discovered, [])
+        stub = home / "reflect/reflect.opencode-v2.js"
+        self.assertTrue(stub.exists())
+        self.assertIn("id: \"reflect\"", stub.read_text())
+        self.assertIn("Prompt capture is unavailable", result.stdout)
+
+    def test_opencode_v2_install_removes_stale_managed_v1_plugin(self):
+        stale = providers.provider_home("opencode") / "plugins/reflect.js"
+        stale.parent.mkdir(parents=True, exist_ok=True)
+        stale.write_bytes(installer.opencode_plugin())
+        with patch.dict(os.environ, {"REFLECT_OPENCODE_PLUGIN_API": "v2"}):
+            result = self.init("--provider", "opencode")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertFalse(stale.exists())
+
+    def test_opencode_v2_install_leaves_unmanaged_plugin_in_place(self):
+        stale = providers.provider_home("opencode") / "plugins/reflect.js"
+        stale.parent.mkdir(parents=True, exist_ok=True)
+        stale.write_text("// user-authored\n", encoding="utf-8")
+        with patch.dict(os.environ, {"REFLECT_OPENCODE_PLUGIN_API": "v2"}):
+            result = self.init("--provider", "opencode")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(stale.read_text(), "// user-authored\n")
+        self.assertIn("not reflect-managed", result.stdout)
+
+    def test_opencode_v2_install_removes_managed_v1_plugin_from_other_location(self):
+        # Reflect installs relocate; the module header and hook shape still identify it.
+        stale = providers.provider_home("opencode") / "plugins/reflect.js"
+        stale.parent.mkdir(parents=True, exist_ok=True)
+        elsewhere = installer.opencode_plugin().replace(
+            str(PACKAGE / "scripts/reflect.py").encode(),
+            b"/home/someone/.local/share/reflect/scripts/reflect.py")
+        stale.write_bytes(elsewhere)
+        with patch.dict(os.environ, {"REFLECT_OPENCODE_PLUGIN_API": "v2"}):
+            result = self.init("--provider", "opencode")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertFalse(stale.exists())
 
     def test_marketplace_reinstall_skips_registration_and_updates_claude(self):
         from types import SimpleNamespace
