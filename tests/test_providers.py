@@ -30,7 +30,8 @@ class ProviderTests(unittest.TestCase):
                   "COPILOT_HOME": str(self.home / ".copilot"), "SANDBOX": "", "CLAUDE_CODE_PROJECT_DIR_NAME": "",
                   "XDG_CONFIG_HOME": str(self.home / ".config"), "XDG_STATE_HOME": str(self.home / ".local/state"),
                   "CODEX_REFLECT_HOME": str(self.home / ".codex/reflect"), "REFLECT_PROVIDER": "codex",
-                  "REFLECT_HOME": str(self.home / "state"), "REFLECT_DISABLED": "0", "REFLECT_REMINDER": "true"}
+                  "REFLECT_HOME": str(self.home / "state"), "REFLECT_DISABLED": "0", "REFLECT_REMINDER": "true",
+                  "REFLECT_OPENCODE_PLUGIN_API": "v1"}
         self.env = patch.dict(os.environ, values)
         self.env.start()
         self.addCleanup(self.env.stop)
@@ -160,14 +161,15 @@ class ProviderTests(unittest.TestCase):
         existing = {"security": {"auth": {"selectedType": "oauth-personal"}},
                     "hooks": {"BeforeAgent": [{"hooks": [{"type": "command", "command": "custom"}]}]}}
         config.write_text(json.dumps(existing), encoding="utf-8")
-        result = self.init("--provider", "gemini", "--provider", "opencode", "--provider", "gemini")
-        self.assertEqual(result.returncode, 0, result.stderr)
-        data = json.loads(config.read_text())
-        self.assertEqual(data["security"], existing["security"])
-        self.assertEqual(len(data["hooks"]["BeforeAgent"]), 2)
-        before = self.snapshot()
-        self.assertEqual(self.init("--provider", "gemini", "--provider", "opencode").returncode, 0)
-        self.assertEqual(self.snapshot(), before)
+        with patch.dict(os.environ, {"REFLECT_OPENCODE_PLUGIN_API": "v1"}):
+            result = self.init("--provider", "gemini", "--provider", "opencode", "--provider", "gemini")
+            self.assertEqual(result.returncode, 0, result.stderr)
+            data = json.loads(config.read_text())
+            self.assertEqual(data["security"], existing["security"])
+            self.assertEqual(len(data["hooks"]["BeforeAgent"]), 2)
+            before = self.snapshot()
+            self.assertEqual(self.init("--provider", "gemini", "--provider", "opencode").returncode, 0)
+            self.assertEqual(self.snapshot(), before)
         self.assertEqual(self.init("--provider", "gemini", "--remove").returncode, 0)
         self.assertEqual(json.loads(config.read_text()), existing)
         self.assertFalse((self.home / ".gemini/skills/reflect/SKILL.md").exists())
@@ -279,6 +281,136 @@ class ProviderTests(unittest.TestCase):
         queue = json.loads(self.cli("opencode", "queue").stdout)
         self.assertEqual([row["message"] for row in queue], [prompt])
         self.assertFalse((self.project / "unwanted-file").exists())
+
+    @unittest.skipUnless(shutil.which("node"), "Node is required to execute the OpenCode bridge fixture")
+    def test_opencode_v2_bridge_captures_prompt_and_deduplicates(self):
+        plugin = self.home / "reflect.mjs"
+        plugin.write_bytes(installer.opencode_v2_plugin())
+        runner = self.home / "run.mjs"
+        prompt = "remember: never execute $(touch unwanted-file) in a prompt"
+        runner.write_text('import plugin from "./reflect.mjs";\n' +
+            'let hook; await plugin.setup({location: {directory: ' + json.dumps(str(self.project)) +
+            '}, session: {hook: async (name, fn) => { if (name !== "prompt") throw Error(name); hook = fn; }}});\n' +
+            'const event = {sessionID: "s", messageID: "m", prompt: {text: ' + json.dumps(prompt) + '}};\n' +
+            'await hook(event); await hook(event); await hook({prompt: {text: ""}});\n', encoding="utf-8")
+        result = subprocess.run(["node", str(runner)], cwd=str(self.project), capture_output=True, text=True)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        queue = json.loads(self.cli("opencode", "queue").stdout)
+        self.assertEqual([row["message"] for row in queue], [prompt])
+        self.assertFalse((self.project / "unwanted-file").exists())
+
+    def test_opencode_v2_install_writes_plugin(self):
+        with patch.dict(os.environ, {"REFLECT_OPENCODE_PLUGIN_API": "v2"}):
+            result = self.init("--provider", "opencode")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        plugin = providers.provider_home("opencode") / "plugins/reflect.js"
+        self.assertEqual(plugin.read_bytes(), installer.opencode_v2_plugin())
+        self.assertIn("v2 prompt capture", result.stdout)
+
+    def test_opencode_v2_install_replaces_exact_legacy_v1_plugin(self):
+        stale = providers.provider_home("opencode") / "plugins/reflect.js"
+        stale.parent.mkdir(parents=True, exist_ok=True)
+        stale.write_bytes(installer.opencode_plugin())
+        with patch.dict(os.environ, {"REFLECT_OPENCODE_PLUGIN_API": "v2"}):
+            result = self.init("--provider", "opencode")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(stale.read_bytes(), installer.opencode_v2_plugin())
+
+    def test_opencode_v2_install_refuses_unmanaged_plugin(self):
+        stale = providers.provider_home("opencode") / "plugins/reflect.js"
+        stale.parent.mkdir(parents=True, exist_ok=True)
+        stale.write_text("// user-authored\n", encoding="utf-8")
+        with patch.dict(os.environ, {"REFLECT_OPENCODE_PLUGIN_API": "v2"}):
+            result = self.init("--provider", "opencode")
+        self.assertNotEqual(result.returncode, 0)
+        self.assertEqual(stale.read_text(), "// user-authored\n")
+        self.assertIn("Unmanaged or locally edited", result.stderr)
+
+    def test_opencode_v2_preserves_edited_legacy_plugin(self):
+        stale = providers.provider_home("opencode") / "plugins/reflect.js"
+        stale.parent.mkdir(parents=True, exist_ok=True)
+        edited = installer.opencode_plugin() + b"// user customization\n"
+        stale.write_bytes(edited)
+        with patch.dict(os.environ, {"REFLECT_OPENCODE_PLUGIN_API": "v2"}):
+            result = self.init("--provider", "opencode")
+        self.assertNotEqual(result.returncode, 0)
+        self.assertEqual(stale.read_bytes(), edited)
+
+    def test_opencode_version_change_refuses_edited_owned_plugin(self):
+        with patch.dict(os.environ, {"REFLECT_OPENCODE_PLUGIN_API": "v1"}):
+            self.assertEqual(self.init("--provider", "opencode").returncode, 0)
+        plugin = providers.provider_home("opencode") / "plugins/reflect.js"
+        plugin.write_bytes(plugin.read_bytes() + b"// user customization\n")
+        before = self.snapshot()
+        with patch.dict(os.environ, {"REFLECT_OPENCODE_PLUGIN_API": "v2"}):
+            result = self.init("--provider", "opencode")
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("locally edited", result.stderr)
+        self.assertEqual(self.snapshot(), before)
+
+    def test_opencode_switches_versions_and_removes_owned_stub(self):
+        with patch.dict(os.environ, {"REFLECT_OPENCODE_PLUGIN_API": "v1"}):
+            self.assertEqual(self.init("--provider", "opencode").returncode, 0)
+        home = providers.provider_home("opencode")
+        plugin = home / "plugins/reflect.js"
+        with patch.dict(os.environ, {"REFLECT_OPENCODE_PLUGIN_API": "v2"}):
+            result = self.init("--provider", "opencode")
+            self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(plugin.read_bytes(), installer.opencode_v2_plugin())
+        stub = home / "reflect/reflect.opencode-v2.js"
+        stub.parent.mkdir(parents=True, exist_ok=True)
+        stub.write_text("old generated stub", encoding="utf-8")
+        registry_path = installer.registry_path()
+        registry = json.loads(registry_path.read_text())
+        registry["providers"]["opencode"]["files"][str(stub)] = installer.digest(stub.read_bytes())
+        registry_path.write_text(json.dumps(registry), encoding="utf-8")
+        with patch.dict(os.environ, {"REFLECT_OPENCODE_PLUGIN_API": "v1"}):
+            result = self.init("--provider", "opencode")
+            self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertFalse(stub.exists())
+        self.assertEqual(plugin.read_bytes(), installer.opencode_plugin())
+        self.assertEqual(self.init("--provider", "opencode", "--remove").returncode, 0)
+        self.assertFalse(plugin.exists())
+
+    def test_opencode_preserves_edited_owned_stub(self):
+        with patch.dict(os.environ, {"REFLECT_OPENCODE_PLUGIN_API": "v2"}):
+            self.assertEqual(self.init("--provider", "opencode").returncode, 0)
+        stub = providers.provider_home("opencode") / "reflect/reflect.opencode-v2.js"
+        stub.parent.mkdir(parents=True, exist_ok=True)
+        stub.write_text("old generated stub", encoding="utf-8")
+        registry_path = installer.registry_path()
+        registry = json.loads(registry_path.read_text())
+        registry["providers"]["opencode"]["files"][str(stub)] = installer.digest(stub.read_bytes())
+        registry_path.write_text(json.dumps(registry), encoding="utf-8")
+        stub.write_text("customized stub", encoding="utf-8")
+        before = self.snapshot()
+        with patch.dict(os.environ, {"REFLECT_OPENCODE_PLUGIN_API": "v1"}):
+            result = self.init("--provider", "opencode")
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("locally edited", result.stderr)
+        self.assertEqual(self.snapshot(), before)
+
+    def test_opencode_version_detection_fails_closed(self):
+        with patch.dict(os.environ, {"REFLECT_OPENCODE_PLUGIN_API": ""}), \
+             patch.object(installer.shutil, "which", return_value="opencode"), \
+             patch.object(installer.subprocess, "run") as run:
+            for version, expected in (("1.17.13", "v1"), ("opencode v2.2.4", "v2")):
+                run.return_value = subprocess.CompletedProcess([], 0, stdout=version)
+                self.assertEqual(installer.opencode_plugin_api(), expected)
+            for version, status in (("3.0.0", 0), ("garbage 2.2.4", 0), ("2.2.4", 1)):
+                run.return_value = subprocess.CompletedProcess([], status, stdout=version)
+                with self.assertRaisesRegex(ValueError, "Cannot detect OpenCode"):
+                    installer.opencode_plugin_api()
+            run.side_effect = subprocess.TimeoutExpired("opencode", 10)
+            with self.assertRaisesRegex(ValueError, "Cannot detect OpenCode"):
+                installer.opencode_plugin_api()
+        with patch.dict(os.environ, {"REFLECT_OPENCODE_PLUGIN_API": ""}), \
+             patch.object(installer.shutil, "which", return_value=None):
+            with self.assertRaisesRegex(ValueError, "executable not found"):
+                installer.opencode_plugin_api()
+        with patch.dict(os.environ, {"REFLECT_OPENCODE_PLUGIN_API": "v3"}):
+            with self.assertRaisesRegex(ValueError, "must be v1 or v2"):
+                installer.opencode_plugin_api()
 
     def test_marketplace_reinstall_skips_registration_and_updates_claude(self):
         from types import SimpleNamespace

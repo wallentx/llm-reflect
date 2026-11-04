@@ -302,7 +302,9 @@ class CheckoutUpdateTests(unittest.TestCase):
     snapshot = fixtures.ProviderTests.snapshot
     setUp = UpdateTests.setUp
     def git(self, root, *args):
-        return subprocess.run(["git", "-C", str(root), *args], capture_output=True,
+        # Fixture setup must finish all Git writes before filesystem snapshots.
+        return subprocess.run(["git", "-c", "maintenance.auto=false", "-c", "gc.auto=0",
+                               "-C", str(root), *args], capture_output=True,
                               text=True, encoding="utf-8", check=True).stdout.strip()
 
     def commit(self, root):
