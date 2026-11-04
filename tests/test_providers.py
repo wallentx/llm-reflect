@@ -299,6 +299,198 @@ class ProviderTests(unittest.TestCase):
         self.assertEqual([row["message"] for row in queue], [prompt])
         self.assertFalse((self.project / "unwanted-file").exists())
 
+    def test_opencode_commands_install_preview_reinstall_and_remove(self):
+        names = ("reflect", "reflect-skills", "view-queue", "skip-reflect")
+        os.environ["XDG_CONFIG_HOME"] = str(self.home / "config with spaces")
+        home = providers.provider_home("opencode")
+        commands = home / "commands"
+        unrelated = commands / "other.md"
+        unrelated.parent.mkdir(parents=True)
+        unrelated.write_text("User's command", encoding="utf-8")
+        singular_unrelated = home / "command/other.md"
+        singular_unrelated.parent.mkdir(parents=True)
+        singular_unrelated.write_text("User's other command", encoding="utf-8")
+        for api in ("v1", "v2"):
+            with self.subTest(api=api), patch.dict(os.environ, {"REFLECT_OPENCODE_PLUGIN_API": api}):
+                before = self.snapshot()
+                preview = self.init("--provider", "opencode", "--dry-run")
+                self.assertEqual(preview.returncode, 0, preview.stderr)
+                self.assertEqual(self.snapshot(), before)
+                self.assertIn(str(commands / "reflect.md"), preview.stdout)
+                result = self.init("--provider", "opencode")
+                self.assertEqual(result.returncode, 0, result.stderr)
+                for name in names:
+                    path = commands / (name + ".md")
+                    content = path.read_text(encoding="utf-8")
+                    self.assertTrue(content.startswith("---\n"))
+                    self.assertIn("description:", content)
+                    self.assertIn(name, content)
+                    self.assertIn("skill tool", content.lower())
+                    self.assertNotIn("$ARGUMENTS", content)
+                    skill = home / "skills" / name / "SKILL.md"
+                    self.assertTrue(skill.is_file())
+                capture = self.cli("opencode", "capture", "--project", str(self.project),
+                                   text="remember: preserve this pending correction")
+                self.assertTrue(json.loads(capture.stdout)["queued"])
+                queue = self.cli("opencode", "queue", "--project", str(self.project)).stdout
+                before = self.snapshot()
+                result = self.init("--provider", "opencode")
+                self.assertEqual(result.returncode, 0, result.stderr)
+                self.assertEqual(self.snapshot(), before)
+                result = self.init("--provider", "opencode", "--remove")
+                self.assertEqual(result.returncode, 0, result.stderr)
+                self.assertTrue(all(not (commands / (name + ".md")).exists() for name in names))
+                self.assertEqual(unrelated.read_text(encoding="utf-8"), "User's command")
+                self.assertEqual(singular_unrelated.read_text(encoding="utf-8"), "User's other command")
+                self.assertEqual(self.cli("opencode", "queue", "--project", str(self.project)).stdout, queue)
+
+    def test_opencode_commands_upgrade_from_existing_installation(self):
+        self.assertEqual(self.init("--provider", "opencode").returncode, 0)
+        home = providers.provider_home("opencode")
+        commands = home / "commands"
+        registry_path = installer.registry_path()
+        registry = json.loads(registry_path.read_text(encoding="utf-8"))
+        files = registry["providers"]["opencode"]["files"]
+        for name in ("reflect", "reflect-skills", "view-queue", "skip-reflect"):
+            path = commands / (name + ".md")
+            path.unlink()
+            del files[str(path)]
+        registry_path.write_text(json.dumps(registry), encoding="utf-8")
+        plugin = (home / "plugins/reflect.js").read_bytes()
+        skill = (home / "skills/reflect/SKILL.md").read_bytes()
+        result = self.init("--provider", "opencode")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual((home / "plugins/reflect.js").read_bytes(), plugin)
+        self.assertEqual((home / "skills/reflect/SKILL.md").read_bytes(), skill)
+        for name in ("reflect", "reflect-skills", "view-queue", "skip-reflect"):
+            self.assertTrue((commands / (name + ".md")).is_file())
+
+    def test_opencode_commands_refuse_unmanaged_and_edited_files(self):
+        commands = providers.provider_home("opencode") / "commands"
+        custom = commands / "reflect.md"
+        custom.parent.mkdir(parents=True)
+        custom.write_text("User-authored command", encoding="utf-8")
+        before = self.snapshot()
+        for args in (("--provider", "opencode"), ("--provider", "opencode", "--dry-run")):
+            result = self.init(*args)
+            self.assertNotEqual(result.returncode, 0)
+            self.assertIn("Unmanaged or locally edited", result.stderr)
+            self.assertEqual(self.snapshot(), before)
+        custom.unlink()
+        self.assertEqual(self.init("--provider", "opencode").returncode, 0)
+        custom.write_text(custom.read_text(encoding="utf-8") + "\nUser edit\n", encoding="utf-8")
+        before = self.snapshot()
+        for args in (("--provider", "opencode"), ("--provider", "opencode", "--remove")):
+            result = self.init(*args)
+            self.assertNotEqual(result.returncode, 0)
+            self.assertIn("locally edited", result.stderr)
+            self.assertEqual(self.snapshot(), before)
+
+    def test_opencode_commands_refuse_singular_directory_collision(self):
+        collision = providers.provider_home("opencode") / "command/reflect.md"
+        collision.parent.mkdir(parents=True)
+        collision.write_text("User's command in the singular directory", encoding="utf-8")
+        before = self.snapshot()
+        for args in (("--provider", "opencode"), ("--provider", "opencode", "--dry-run")):
+            result = self.init(*args)
+            self.assertNotEqual(result.returncode, 0)
+            self.assertIn(str(collision), result.stderr)
+            self.assertEqual(self.snapshot(), before)
+
+    def test_opencode_commands_refuse_global_inline_config_collisions(self):
+        home = providers.provider_home("opencode")
+        home.mkdir(parents=True)
+        for filename in ("config.json", "opencode.json", "opencode.jsonc"):
+            for key in ("command", "commands"):
+                with self.subTest(filename=filename, key=key):
+                    path = home / filename
+                    if filename.endswith(".jsonc"):
+                        content = ('{\n// Keep this comment\n' + json.dumps(key) +
+                                   ': {"reflect": {"template": "https://example.invalid/*literal*/"},},\n}\n')
+                    else:
+                        content = json.dumps({key: {"reflect": {"template": "custom"}}})
+                    path.write_text(content, encoding="utf-8")
+                    before = self.snapshot()
+                    result = self.init("--provider", "opencode")
+                    self.assertNotEqual(result.returncode, 0, result.stdout)
+                    self.assertIn(str(path), result.stderr)
+                    self.assertEqual(self.snapshot(), before)
+                    path.unlink()
+
+    def test_opencode_commands_allow_unrelated_global_config_entries(self):
+        home = providers.provider_home("opencode")
+        home.mkdir(parents=True)
+        config = home / "config.json"
+        config.write_text(json.dumps({"command": {"other": {"template": "custom"}}}), encoding="utf-8")
+        opencode = home / "opencode.json"
+        opencode.write_text(json.dumps({"commands": {"other": {"template": "custom"}}}), encoding="utf-8")
+        jsonc = home / "opencode.jsonc"
+        literal = json.dumps('comma, } // literal /* literal */ and "quotes"')
+        jsonc.write_text('{\n/* keep */ "command": {"other": {"template": ' + literal + ',},},\n}\n',
+                         encoding="utf-8")
+        before = {path: path.read_bytes() for path in (config, opencode, jsonc)}
+        result = self.init("--provider", "opencode")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertTrue((home / "commands/reflect.md").is_file())
+        self.assertEqual({path: path.read_bytes() for path in before}, before)
+
+    def test_opencode_jsonc_cr_only_line_comment_does_not_hide_conflict(self):
+        path = providers.provider_home("opencode") / "opencode.jsonc"
+        path.parent.mkdir(parents=True)
+        path.write_bytes(b'// comment\r{"commands":{"reflect":{"template":"custom"}}}\r')
+        before = self.snapshot()
+        result = self.init("--provider", "opencode")
+        self.assertNotEqual(result.returncode, 0, result.stdout)
+        self.assertIn(str(path), result.stderr)
+        self.assertEqual(self.snapshot(), before)
+
+    def test_opencode_commands_refuse_malformed_global_config(self):
+        home = providers.provider_home("opencode")
+        home.mkdir(parents=True)
+        for filename, content in (("config.json", '{"command": {"other":'),
+                                  ("opencode.jsonc", "/* unterminated")):
+            with self.subTest(filename=filename):
+                path = home / filename
+                path.write_text(content, encoding="utf-8")
+                before = self.snapshot()
+                result = self.init("--provider", "opencode", "--dry-run")
+                self.assertNotEqual(result.returncode, 0, result.stdout)
+                self.assertIn(str(path), result.stderr)
+                self.assertEqual(self.snapshot(), before)
+                path.unlink()
+
+    def test_opencode_commands_refuse_dynamic_inline_command_keys(self):
+        path = providers.provider_home("opencode") / "opencode.jsonc"
+        path.parent.mkdir(parents=True)
+        secret = "do-not-print-this-private-value"
+        for dynamic in ("{env:COMMAND_NAME}", "{file:/private/command-name}"):
+            for location in ("root", "command", "commands"):
+                with self.subTest(dynamic=dynamic, location=location):
+                    config = {dynamic: secret} if location == "root" else {
+                        location: {dynamic: {"template": secret}}}
+                    path.write_text(json.dumps(config), encoding="utf-8")
+                    before = self.snapshot()
+                    result = self.init("--provider", "opencode")
+                    self.assertNotEqual(result.returncode, 0, result.stdout)
+                    self.assertIn(str(path), result.stderr)
+                    self.assertNotIn(secret, result.stderr + result.stdout)
+                    self.assertEqual(self.snapshot(), before)
+
+    def test_opencode_commands_refuse_non_json_numeric_constants(self):
+        path = providers.provider_home("opencode") / "opencode.jsonc"
+        path.parent.mkdir(parents=True)
+        secret = "do-not-print-this-private-value"
+        for constant in ("NaN", "Infinity", "-Infinity"):
+            with self.subTest(constant=constant):
+                path.write_text('{"command": {}, "value": ' + constant +
+                                ', "private": ' + json.dumps(secret) + '}', encoding="utf-8")
+                before = self.snapshot()
+                result = self.init("--provider", "opencode", "--dry-run")
+                self.assertNotEqual(result.returncode, 0, result.stdout)
+                self.assertIn(str(path), result.stderr)
+                self.assertNotIn(secret, result.stderr + result.stdout)
+                self.assertEqual(self.snapshot(), before)
+
     def test_opencode_v2_install_writes_plugin(self):
         with patch.dict(os.environ, {"REFLECT_OPENCODE_PLUGIN_API": "v2"}):
             result = self.init("--provider", "opencode")

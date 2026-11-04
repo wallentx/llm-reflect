@@ -12,6 +12,7 @@ import sys
 import tempfile
 import uuid
 
+import opencode_commands
 import providers
 
 PACKAGE = Path(__file__).resolve().parents[1]
@@ -157,6 +158,18 @@ def skill_bytes(name, skill):
     return (source[:end] + "\n" + binding + source[end:]).encode()
 
 
+def opencode_command(skill):
+    source = (TEMPLATES / "skills" / skill / "SKILL.md").read_text(encoding="utf-8")
+    frontmatter = source.split("---", 2)[1]
+    description = next(line.removeprefix("description: ") for line in frontmatter.splitlines()
+                       if line.startswith("description: "))
+    # Both versions append arguments when no placeholder exists; v1's
+    # $ARGUMENTS substitution interprets JavaScript replacement tokens.
+    return ("---\ndescription: " + json.dumps(description, ensure_ascii=False) + "\n---\n\n"
+            "Use the skill tool to load the " + skill + " skill, then follow its instructions "
+            "for the arguments that follow.\n").encode()
+
+
 def file_plan(path, content, owned, writes, new_owned):
     path = Path(path)
     # Do not follow a symlink in the destination or any of its parents.
@@ -254,6 +267,13 @@ def local_plan(name, previous, remove=False, opencode_api=None):
         workflow = (TEMPLATES / "references/review-workflow.md").read_bytes()
         file_plan(providers.skill_home(name) / "reflect/references/review-workflow.md", workflow, old_files, writes, owned)
         if name == "opencode":
+            opencode_commands.check_inline_commands(providers.provider_home(name), SKILLS)
+            for skill in SKILLS:
+                alias = providers.provider_home(name) / "command" / (skill + ".md")
+                if alias.is_file() or alias.is_symlink():
+                    raise ValueError("OpenCode command already exists: " + str(alias))
+                command = providers.provider_home(name) / "commands" / (skill + ".md")
+                file_plan(command, opencode_command(skill), old_files, writes, owned)
             api = opencode_api or opencode_plugin_api()
             plugin = providers.provider_home(name) / "plugins/reflect.js"
             stub = providers.provider_home(name) / "reflect/reflect.opencode-v2.js"

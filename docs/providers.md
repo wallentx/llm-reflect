@@ -211,6 +211,18 @@ For OpenCode, the installer runs `opencode --version` and selects the v1 or v2
 plugin. If OpenCode is unavailable or its version cannot be recognized, install
 it first or set `REFLECT_OPENCODE_PLUGIN_API=v1` or `v2` for the installer.
 Re-run setup after changing OpenCode major versions so the plugin matches.
+The installer also registers `/reflect`, `/reflect-skills`, `/view-queue`, and
+`/skip-reflect` in `$XDG_CONFIG_HOME/opencode/commands` (default
+`~/.config/opencode/commands`). Each command asks OpenCode to load the matching
+skill and passes its arguments to that skill. Re-run
+`reflect init --provider opencode` to add the commands to an existing installation.
+The installer refuses matching command files and literal command names in
+OpenCode's global JSON configuration. OpenCode can also substitute environment
+variables into configuration; the installer cannot predict every resulting
+command definition.
+
+OpenCode expands shell blocks such as `` !`command` `` in command arguments
+before the agent receives them. Enter only trusted arguments in slash commands.
 
 Each installed skill binds its helper commands to its provider. Do not copy a
 bound skill between providers. Use the installer for each provider instead.
